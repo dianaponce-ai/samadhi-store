@@ -1,0 +1,24 @@
+{
+  "name": "samadhi-store",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Tienda online de Samadhi Style: vidriera, panel de administración, Mercado Pago y Andreani.",
+  "type": "module",
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "start": "node --disable-warning=ExperimentalWarning server/index.js",
+    "dev": "node --disable-warning=ExperimentalWarning --watch server/index.js",
+    "import": "node --disable-warning=ExperimentalWarning scripts/import-tiendanube.js",
+    "create-admin": "node --disable-warning=ExperimentalWarning scripts/create-admin.js",
+    "download-images": "node --disable-warning=ExperimentalWarning scripts/download-images.js",
+    "test": "node --disable-warning=ExperimentalWarning --test test/*.test.js",
+    "demo-users": "node --disable-warning=ExperimentalWarning scripts/demo-users.js",
+    "build:demo": "node --disable-warning=ExperimentalWarning scripts/import-tiendanube.js && node --disable-warning=ExperimentalWarning scripts/build-preview.js dist/demo/index.html --standalone"
+  },
+  "dependencies": {
+    "express": "^5.1.0",
+    "nodemailer": "6.10.1"
+  }
+}

@@ -1,0 +1,7 @@
+node_modules/
+.env
+data/*.db
+data/*.db-*
+data/uploads/
+lince/samadhi-lince.config.ps1
+dist/

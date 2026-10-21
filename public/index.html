@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="es-AR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Samadhi Style</title>
+<meta name="description" content="Samadhi Style · Moda, accesorios y estilo. Lo auténtico también se viste.">
+<meta name="theme-color" content="#f4efe6">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="preconnect" href="https://acdn-us.mitiendanube.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Italiana&family=Cormorant+Garamond:ital,wght@0,400;0,500;1,400;1,500&family=Jost:wght@300;400;500&display=swap">
+<link rel="stylesheet" href="/assets/store.css">
+</head>
+<body>
+<!--BODY-->
+<div class="announce"><div class="wrap caps" id="announce">Moda · Accesorios · Estilo</div></div>
+<header class="top">
+  <div class="wrap">
+    <div style="display:flex;align-items:center;gap:16px">
+      <button class="icon-btn menu-btn" id="menuBtn" aria-label="Abrir menú"><svg viewBox="0 0 24 24"><path d="M3 7h18M3 12h18M3 17h18"/></svg></button>
+      <nav class="nav" aria-label="Principal">
+        <button data-go="all">Tienda</button>
+        <button data-go="new">SS'27</button>
+        <button data-go="sale">Sale</button>
+        <button data-tryon-open hidden class="nav-tryon">Probador</button>
+        <a href="#nosotras">Nosotras</a>
+      </nav>
+    </div>
+    <a class="logo" href="#" id="logoBtn" aria-label="Samadhi Style, inicio"><span class="w">SAMADHI</span><span class="s">STYLE</span></a>
+    <div class="tools">
+      <button class="icon-btn" id="userBtn" aria-label="Ingresar"><svg viewBox="0 0 24 24"><circle cx="12" cy="8.5" r="3.8"/><path d="M4.5 20.5c1.2-4 4.2-6 7.5-6s6.3 2 7.5 6"/></svg><span class="lbl">Ingresar</span></button>
+      <button class="icon-btn" id="searchBtn" aria-label="Buscar"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg></button>
+      <button class="icon-btn" id="bagBtn" aria-label="Abrir bolsa"><svg viewBox="0 0 24 24"><path d="M5 8h14l-1 13H6L5 8z"/><path d="M9 8V6a3 3 0 016 0v2"/></svg><span class="lbl">Bolsa</span><span class="bag-count" id="bagCount">0</span></button>
+    </div>
+  </div>
+</header>
+
+<section class="hero" id="hero" aria-roledescription="carrusel" aria-label="Novedades">
+  <div class="slides" id="slides"></div>
+  <div class="side-mark caps">Samadhi · Style</div>
+  <nav class="vnav" aria-label="Banners">
+    <button class="arrow" id="heroUp" aria-label="Banner anterior"><svg viewBox="0 0 14 14"><path d="M2 9l5-5 5 5"/></svg></button>
+    <ol id="heroDots"></ol>
+    <button class="arrow" id="heroDown" aria-label="Banner siguiente"><svg viewBox="0 0 14 14"><path d="M2 5l5 5 5-5"/></svg></button>
+    <span class="count money" id="heroCount"></span>
+  </nav>
+  <div class="scroll-cue">Tienda</div>
+</section>
+
+<nav class="cats" aria-label="Categorías"><div class="wrap" id="cats"></div></nav>
+
+<section class="shop" id="shop">
+  <div class="wrap">
+    <div class="shop-head">
+      <div><h2 id="shopTitle">La tienda</h2><div class="sub" id="shopSub">Lo auténtico también se viste.</div></div>
+      <div class="toolbar">
+        <div class="seg-coll" id="coll" role="group" aria-label="Colección"></div>
+        <label class="field" for="q"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg><input id="q" type="search" placeholder="Buscar una prenda" autocomplete="off"></label>
+        <label class="field" for="sort"><span class="caps" style="font-size:10px">Orden</span>
+          <select id="sort"><option value="feat">Destacados</option><option value="new">Novedades</option><option value="asc">Menor precio</option><option value="desc">Mayor precio</option><option value="off">Mayor descuento</option></select>
+        </label>
+      </div>
+    </div>
+    <div class="chips" id="chips"></div>
+    <div class="grid" id="grid"></div>
+    <div class="more"><button class="btn" id="moreBtn" hidden>Ver más prendas</button></div>
+  </div>
+</section>
+
+<section class="band" id="nosotras">
+  <div class="bg" id="bandBg"></div>
+  <div class="wrap">
+    <div class="monogram"><span>S</span></div>
+    <div>
+      <div class="q">Un mismo lugar, distintas formas de vivir lo esencial.</div>
+      <div class="caps">Belleza · Bienestar · Espacios con alma</div>
+    </div>
+  </div>
+</section>
+
+<section class="reviews" id="resenas" hidden aria-labelledby="revTitle">
+  <div class="wrap" id="reviewsBox"></div>
+</section>
+
+<section class="faq" id="faq" aria-labelledby="faqTitle">
+  <div class="wrap">
+    <div class="faq-head">
+      <div class="caps">Ayuda</div>
+      <h2 id="faqTitle">Preguntas frecuentes</h2>
+      <p class="it">¿Te quedó alguna duda? Escribinos por <a id="faqWa" href="#" target="_blank" rel="noopener">WhatsApp</a>.</p>
+      <button class="btn" type="button" data-track>Seguir mi pedido</button>
+    </div>
+    <div class="faq-list" id="faqList"></div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <div class="foot-logo"><div class="w">SAMADHI</div><div class="s">STYLE</div><div class="it">Gracias por ser parte<br>de esta historia.</div></div>
+    <div><h4 class="caps">Tienda</h4><ul id="footCats"></ul></div>
+    <div><h4 class="caps">Ayuda</h4><ul>
+      <li><button type="button" data-track>Seguir mi pedido</button></li>
+      <li><a href="#faq">Preguntas frecuentes</a></li>
+      <li><button type="button" data-legal="returns">Cambios y devoluciones</button></li>
+      <li><button type="button" data-legal="terms">Términos y condiciones</button></li>
+      <li><button type="button" data-withdraw class="withdraw-link">Botón de arrepentimiento</button></li>
+      <li id="footPickup" hidden></li>
+    </ul></div>
+    <div><h4 class="caps">Seguinos</h4><ul id="footSocial"></ul></div>
+    <div class="legal"><span>© <span id="year">2026</span> Samadhi Style</span><a href="https://www.argentina.gob.ar/produccion/defensadelconsumidor/formulario" target="_blank" rel="noopener">Defensa de las y los consumidores. Para reclamos ingrese aquí</a><span>Envíos con Andreani · Pagos con Mercado Pago</span></div>
+  </div>
+</footer>
+
+<div class="scrim" id="scrim"></div>
+<div class="mnav" id="mnav" aria-label="Menú"></div>
+<div class="modal" id="modal" role="dialog" aria-modal="true" aria-labelledby="pName"></div>
+<aside class="drawer" id="drawer" aria-label="Bolsa"></aside>
+<aside class="drawer" id="acct" aria-label="Mi cuenta"></aside>
+<aside class="drawer" id="track" aria-label="Seguir mi pedido"></aside>
+<aside class="drawer doc" id="legal" aria-label="Información legal"></aside>
+<div class="tryon" id="tryon" role="dialog" aria-modal="true" aria-label="Probador virtual"></div>
+<div class="toast" id="toast" role="status"></div>
+<!--/BODY-->
+<script src="/assets/store.js" type="module"></script>
+</body>
+</html>

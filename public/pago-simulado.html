@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="es-AR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Pago de prueba · Samadhi Style</title>
+<meta name="robots" content="noindex">
+<link rel="stylesheet" href="/assets/store.css">
+<style>
+  .sim { max-width: 460px; margin: 10vh auto; background: var(--papel); padding: 36px 28px; text-align: center; display: grid; gap: 16px; }
+  .sim h1 { font-family: var(--display); font-size: 40px; }
+  .sim .row { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+</style>
+</head>
+<body>
+<main class="wrap"><div class="sim">
+  <div class="caps" style="color:var(--suave)">Modo prueba</div>
+  <h1>Pago simulado</h1>
+  <p class="note">La tienda todavía no tiene las credenciales de Mercado Pago, así que este paso reemplaza al pago real. No se cobra nada.</p>
+  <div class="row"><button class="btn solid" data-ok="1">Aprobar pago</button><button class="btn" data-ok="0">Rechazar pago</button></div>
+</div></main>
+<script type="module">
+const t = new URLSearchParams(location.search).get('t');
+document.querySelectorAll('[data-ok]').forEach((b) => b.addEventListener('click', async () => {
+  b.disabled = true;
+  await fetch('/api/dev/mock-payment', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: t, approve: b.dataset.ok === '1' }) });
+  location.href = `/pedido.html?t=${encodeURIComponent(t)}`;
+}));
+</script>
+</body>
+</html>

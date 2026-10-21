@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="es-AR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Mi pedido · Samadhi Style</title>
+<meta name="robots" content="noindex">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Italiana&family=Cormorant+Garamond:ital,wght@0,400;0,500;1,400&family=Jost:wght@300;400;500&display=swap">
+<link rel="stylesheet" href="/assets/store.css">
+<style>
+  .order { max-width: 640px; margin: 0 auto; padding-block: 56px 80px; }
+  .order .head { text-align: center; display: grid; gap: 10px; justify-items: center; margin-bottom: 36px; }
+  .order h1 { font-family: var(--display); font-size: clamp(40px, 6vw, 58px); line-height: 1; }
+  .order .lead { font-family: var(--serif); font-style: italic; font-size: 22px; line-height: 1.3; }
+  .steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 28px 0; }
+  .steps div { border-top: 2px solid var(--linea); padding-top: 10px; font-size: 10px; letter-spacing: .2em; text-transform: uppercase; color: var(--suave); }
+  .steps div.on { border-color: var(--tinta); color: var(--tinta); }
+  .box { background: var(--papel); padding: 24px; display: grid; gap: 12px; }
+  .box + .box { margin-top: 14px; }
+  .it-row { display: grid; grid-template-columns: 56px 1fr auto; gap: 14px; align-items: center; }
+  .it-row .th { aspect-ratio: 3/4; background: var(--arena); overflow: hidden; }
+  .it-row img { width: 100%; height: 100%; object-fit: cover; }
+  .lookup { display: flex; gap: 10px; align-items: flex-end; }
+  .lookup .fl { flex: 1; }
+</style>
+</head>
+<body>
+<div class="announce"><div class="wrap caps">Moda · Accesorios · Estilo</div></div>
+<header class="top"><div class="wrap"><div><a class="caps" href="/" style="text-decoration:none">← Tienda</a></div>
+  <a class="logo" href="/"><span class="w">SAMADHI</span><span class="s">STYLE</span></a><div></div></div></header>
+<main class="wrap"><div class="order" id="app"><p class="note" style="text-align:center">Cargando tu pedido…</p></div></main>
+<script type="module">
+const $ = (s) => document.querySelector(s);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+const fmt = (n) => '$ ' + Math.round(n || 0).toLocaleString('es-AR');
+const params = new URLSearchParams(location.search);
+let token = params.get('t');
+if (!token) { try { token = localStorage.getItem('samadhi-last-order'); } catch {} }
+const sized = (u) => (u || '').replace(/-1024-1024\.webp$/, '-320-0.webp');
+
+function lookupForm(msg) {
+  $('#app').innerHTML = `<div class="head"><h1>Mi pedido</h1><p class="lead">${esc(msg || 'Abrí el link que te enviamos por mail para ver tu pedido.')}</p></div>`;
+}
+
+async function load(tries = 0) {
+  if (!token) return lookupForm();
+  const qs = new URLSearchParams();
+  const pid = params.get('payment_id') || params.get('collection_id');
+  if (pid && tries === 0) qs.set('payment_id', pid);
+  const res = await fetch(`/api/orders/${encodeURIComponent(token)}?${qs}`);
+  if (!res.ok) return lookupForm('No encontramos ese pedido. Revisá el link del mail.');
+  const o = await res.json();
+  render(o);
+  // Si volvió de Mercado Pago y el pago todavía figura pendiente, consultamos de nuevo unos segundos.
+  if (o.status === 'pending_payment' && (params.get('status') === 'approved' || params.get('collection_status') === 'approved') && tries < 6) setTimeout(() => load(tries + 1), 2500);
+}
+
+function render(o) {
+  const order = ['pending_payment', 'paid', 'preparing', o.shippingMethod === 'retiro' ? 'ready_pickup' : 'shipped', 'delivered'];
+  const idx = Math.max(0, order.indexOf(o.status));
+  const steps = o.shippingMethod === 'retiro' ? ['Pagado', 'En preparación', 'Listo para retirar', 'Entregado'] : ['Pagado', 'En preparación', 'Despachado', 'Entregado'];
+  const failed = ['rejected', 'cancelled'].includes(o.paymentStatus) && o.status === 'pending_payment';
+  const lead = {
+    pending_payment: o.transfer ? 'Tu pedido está reservado. Solo falta la transferencia.' : failed ? 'El pago no se pudo completar. Podés intentarlo de nuevo.' : 'Estamos esperando la confirmación de Mercado Pago.',
+    paid: 'Gracias por ser parte de esta historia. Ya estamos preparando tu pedido.',
+    preparing: 'Estamos preparando tu pedido con mucho cuidado.',
+    ready_pickup: 'Tu pedido está listo para retirar.',
+    shipped: 'Tu pedido ya está en camino.',
+    delivered: 'Tu pedido fue entregado. Gracias por elegirnos.',
+    cancelled: 'Este pedido fue cancelado.',
+    refunded: 'Este pedido fue devuelto.',
+  }[o.status];
+  $('#app').innerHTML = `
+    <div class="head"><div class="caps" style="color:var(--suave)">Pedido ${esc(o.number)}</div><h1>${esc(o.statusLabel)}</h1><p class="lead">${esc(lead)}</p></div>
+    ${o.status !== 'cancelled' && o.status !== 'refunded' ? `<div class="steps">${steps.map((s, i) => `<div class="${idx >= i + 1 ? 'on' : ''}">${s}</div>`).join('')}</div>` : ''}
+    ${o.transfer ? `<div class="box"><div class="caps">Datos para transferir</div>
+      <div style="font-family:var(--serif);font-size:26px" class="money">${fmt(o.total)}</div>
+      <p class="note" style="margin:0">Ya tiene el ${o.transfer.discount}% OFF. Guardamos tus prendas ${o.transfer.hours} horas.</p>
+      ${[['Titular', o.transfer.holder], ['Banco', o.transfer.bank], ['CBU', o.transfer.cbu], ['Alias', o.transfer.alias]].filter((r) => r[1]).map(([k, v]) => `<div class="tot"><span>${k}</span><span class="money"><b style="font-weight:500">${esc(v)}</b> <button class="link-btn" data-copy="${esc(v)}">Copiar</button></span></div>`).join('') || '<p class="note">En breve te escribimos con los datos bancarios.</p>'}
+      ${o.transfer.whatsapp ? `<p class="note" style="margin:0">Mandanos el comprobante por WhatsApp al ${esc(o.transfer.whatsapp)} o respondiendo el mail que te enviamos.</p>` : ''}</div>`
+    : o.status === 'pending_payment' ? `<div class="box" style="text-align:center"><p class="note">Pago: ${esc(o.paymentLabel)}</p><button class="btn solid" id="retry">Pagar con Mercado Pago</button></div>` : ''}
+    ${o.andreaniNumber ? `<div class="box"><div class="caps">Envío Andreani</div><div class="money" style="font-size:18px">${esc(o.andreaniNumber)}</div>${o.trackingStatus ? `<p class="note">Último estado: ${esc(o.trackingStatus)}</p>` : ''}${o.trackingUrl ? `<a class="btn" href="${esc(o.trackingUrl)}" target="_blank" rel="noopener">Seguir mi envío</a>` : ''}</div>` : ''}
+    <div class="box">
+      ${o.items.map((i) => `<div class="it-row"><div class="th">${i.image ? `<img src="${esc(sized(i.image))}" alt="" onerror="this.remove()">` : ''}</div><div><div style="font-family:var(--serif);font-size:18px">${esc(i.name)}</div><div class="note">${esc(i.variant_label)} · ${i.qty} u.</div></div><div class="money">${fmt(i.unit_price * i.qty)}</div></div>`).join('')}
+      <div class="tot" style="border-top:1px solid var(--linea);padding-top:12px"><span>Productos</span><span class="money">${fmt(o.subtotal)}</span></div>
+      ${o.discount ? `<div class="tot save"><span>Descuento</span><span class="money">− ${fmt(o.discount)}</span></div>` : ''}
+      <div class="tot"><span>${esc(o.shippingLabel)}</span><span class="money">${o.shippingCost ? fmt(o.shippingCost) : 'Sin cargo'}</span></div>
+      <div class="tot big"><span>Total</span><span class="money">${fmt(o.total)}</span></div>
+    </div>
+    <p class="note" style="text-align:center;margin-top:24px">Te escribimos a ${esc(o.email)} con cada novedad.</p>`;
+  document.querySelectorAll('[data-copy]').forEach((btn) => btn.addEventListener('click', async () => { try { await navigator.clipboard.writeText(btn.dataset.copy); btn.textContent = 'Copiado'; } catch { btn.textContent = btn.dataset.copy; } }));
+  $('#retry')?.addEventListener('click', async (e) => {
+    e.target.disabled = true; e.target.textContent = 'Preparando el pago…';
+    const r = await fetch(`/api/orders/${encodeURIComponent(token)}/pay`, { method: 'POST' });
+    const d = await r.json();
+    if (r.ok) location.href = d.payUrl; else { e.target.disabled = false; e.target.textContent = 'Pagar con Mercado Pago'; alertBox(d.error); }
+  });
+}
+function alertBox(m) { const el = document.createElement('div'); el.className = 'alert'; el.textContent = m; $('#app').prepend(el); }
+load();
+</script>
+</body>
+</html>

@@ -1,0 +1,23 @@
+AGENTE DE LINCE · SAMADHI STYLE
+================================
+
+Qué hace: cada vez que corre, lee el stock (y precios) de Dragonfish en esta PC
+y se lo manda a la tienda web. La tienda cruza cada fila por
+Artículo + Color + Talle con el campo "Artículo" de cada producto del panel.
+
+1. Pedile a Zoo Logic que active el "Servicio REST API" de Dragonfish y que te pase
+   el IdCliente y el token (Authorization). Confirmá con ellos el puerto
+   (por defecto http://localhost:8000/api.Dragonfish).
+2. Copiá esta carpeta a la PC del local, por ejemplo en C:\samadhi-lince
+3. Copiá samadhi-lince.config.ejemplo.ps1 como samadhi-lince.config.ps1 y completalo.
+4. Probalo una vez, desde PowerShell:
+     powershell -ExecutionPolicy Bypass -File C:\samadhi-lince\samadhi-lince.ps1
+   Tiene que decir cuántas variantes actualizó. Queda registro en samadhi-lince.log
+5. Programador de tareas de Windows → Crear tarea básica → "Sincronizar Samadhi"
+   Disparador: diariamente, repetir cada 15 minutos.
+   Acción: Iniciar un programa
+     Programa: powershell
+     Argumentos: -ExecutionPolicy Bypass -File C:\samadhi-lince\samadhi-lince.ps1
+
+En el panel de la tienda, sección Lince, ves cada sincronización, las filas que no se
+pudieron cruzar y los pedidos web que falta cargar en Lince.
