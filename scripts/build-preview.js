@@ -60,7 +60,7 @@ window.__PROBADOR_BASE = ${JSON.stringify(standalone ? 'vendor/mediapipe-pose/' 
 </script>
 <script type="module">
 ${read('public/assets/probador-engine.js').replace(/^export /gm, '')}
-window.__PROBADOR = { KINDS, kindFor, isShort, loadPose, detect, prepareGarment, fitGarment, checkBody, renderLook };
+window.__PROBADOR = { KINDS, kindFor, isShort, loadPose, detect, prepareGarment, prepareGarmentFromMask, fitGarment, checkBody, renderLook };
 </script>
 <script type="module">
 ${read('server/lib/email-templates.js').replace(/^export /gm, '')}

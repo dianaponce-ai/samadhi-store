@@ -314,17 +314,97 @@ function fillHoles(alpha, keep, px, W, H) {
     }
     if (border || cells.length > area * 0.06) continue;
     // Relleno: varias pasadas tomando el promedio de los vecinos ya pintados.
-    const todo = new Set(cells);
+    const todo = new Set(cells), filled = new Set();
     for (let it = 0; it < 200 && todo.size; it++) {
       const done = [];
       for (const k of todo) {
         let r = 0, g = 0, b = 0, c = 0;
-        for (const q of [k - 1, k + 1, k - W, k + W]) if (q >= 0 && q < W * H && keep[q] && alpha[q] > 0 && !todo.has(q)) { r += px[q * 4]; g += px[q * 4 + 1]; b += px[q * 4 + 2]; c++; }
+        for (const q of [k - 1, k + 1, k - W, k + W]) if (q >= 0 && q < W * H && keep[q] && (alpha[q] > 0.6 || filled.has(q)) && !todo.has(q)) { r += px[q * 4]; g += px[q * 4 + 1]; b += px[q * 4 + 2]; c++; }
         if (c) done.push([k, r / c, g / c, b / c]);
       }
-      for (const [k, r, g, b] of done) { px[k * 4] = r; px[k * 4 + 1] = g; px[k * 4 + 2] = b; alpha[k] = 1; keep[k] = 1; todo.delete(k); }
+      for (const [k, r, g, b] of done) { px[k * 4] = r; px[k * 4 + 1] = g; px[k * 4 + 2] = b; alpha[k] = 1; keep[k] = 1; todo.delete(k); filled.add(k); }
       if (!done.length) break;
     }
+  }
+}
+
+/**
+ * Igual que prepareGarment, pero con la máscara de la prenda que da el modelo de recorte de ropa (mucho más precisa).
+ * maskImg: imagen en escala de grises del mismo tamaño que la foto (blanco = prenda).
+ */
+export async function prepareGarmentFromMask(image, maskImg, kind) {
+  const d = await detect(image, { complexity: 1, mask: false });
+  if (!d.lm) return null;
+  const { W, H } = d;
+  const cp = controlPoints(d.lm, kind);
+  const { shW, torso, down, shM } = cp;
+  const c = document.createElement('canvas'); c.width = W; c.height = H;
+  const ctx = c.getContext('2d', { willReadFrequently: true });
+  ctx.drawImage(maskImg, 0, 0, W, H);
+  const mk = ctx.getImageData(0, 0, W, H).data;
+  ctx.clearRect(0, 0, W, H); ctx.drawImage(image, 0, 0, W, H);
+  const img = ctx.getImageData(0, 0, W, H), px = img.data;
+  const alpha = new Float32Array(W * H);
+  const along = (x, y) => (x - shM.x) * down.x + (y - shM.y) * down.y;
+  for (let k = 0; k < W * H; k++) {
+    const v = mk[k * 4] / 255;
+    const a = Math.max(0, Math.min(1, (v - 0.3) / 0.45));
+    if (a <= 0) continue;
+    if (along(k % W, (k / W) | 0) < -torso * 0.35) continue; // nada por encima del cuello
+    alpha[k] = a;
+  }
+  const keep = largestComponent(alpha, W, H);
+  fillHoles(alpha, keep, px, W, H);
+  bridgeVertical(alpha, keep, px, W, H, Math.round(torso * 0.45), skinColor(px, fillLandmarks(d.lm), W, H));
+  let minX = W, minY = H, maxX = 0, maxY = 0, area = 0;
+  for (let k = 0; k < W * H; k++) {
+    const a = keep[k] ? alpha[k] : 0;
+    px[k * 4 + 3] = Math.round(a * 255);
+    if (a > 0.05) { area += a; const x = k % W, y = (k / W) | 0; if (x < minX) minX = x; if (x > maxX) maxX = x; if (y < minY) minY = y; if (y > maxY) maxY = y; }
+  }
+  if (maxX <= minX || maxY <= minY) return null;
+  ctx.putImageData(img, 0, 0);
+  const pad = 4, cw = maxX - minX + 1 + pad * 2, ch = maxY - minY + 1 + pad * 2;
+  const out = document.createElement('canvas'); out.width = cw; out.height = ch;
+  out.getContext('2d').drawImage(c, minX - pad, minY - pad, cw, ch, 0, 0, cw, ch);
+  const pts = cp.pts.map((q) => ({ ...q, x: q.x - minX + pad, y: q.y - minY + pad }));
+  // Puntaje: prenda de tamaño razonable para el cuerpo detectado y cuerpo de frente (hombros anchos respecto del torso).
+  const len = kind === 'top' ? torso * 1.2 : kind === 'bottom' ? torso * 1.8 : torso * 2.4;
+  const coverage = area / (shW * len * 1.2);
+  const frontal = Math.min(1, (shW / torso) / 0.75);
+  const quality = Math.max(0, Math.min(1, (1 - Math.abs(coverage - 0.9) / 0.9) * frontal));
+  return { canvas: out, pts, kind, quality: Math.round(quality * 100) / 100, size: [cw, ch] };
+}
+
+// Brazos cruzados delante de la prenda: en cada columna, si un tramo vacío tiene prenda arriba y abajo,
+// lo completa estirando los colores de los dos bordes.
+function bridgeVertical(alpha, keep, px, W, H, maxGap, skin) {
+  const solid = (k) => keep[k] && alpha[k] > 0.7;
+  const skinAt = (k) => isSkin(rgb2ycc(px[k * 4], px[k * 4 + 1], px[k * 4 + 2]), skin, 1.5);
+  const bridged = new Uint8Array(W * H);
+  for (let x = 0; x < W; x++) {
+    let y = 0;
+    while (y < H) {
+      if (!solid(y * W + x)) { y++; continue; }
+      let y2 = y + 1; while (y2 < H && !solid(y2 * W + x)) y2++;
+      const gap = y2 - y - 1;
+      let skinN = 0; for (let yy = y + 1; yy < y2; yy++) if (skinAt(yy * W + x)) skinN++;
+      // Sólo si el hueco es mayormente piel (un brazo o una mano tapando la prenda), no fondo.
+      if (y2 < H && gap > 0 && gap <= maxGap && skinN >= gap * 0.6) {
+        const a = Math.max(0, y - 3) * W + x, b = Math.min(H - 1, y2 + 3) * W + x;
+        for (let yy = y + 1; yy < y2; yy++) {
+          const k = yy * W + x, t = (yy - y) / (gap + 1);
+          for (let c = 0; c < 3; c++) px[k * 4 + c] = px[a * 4 + c] * (1 - t) + px[b * 4 + c] * t;
+          alpha[k] = 1; keep[k] = 1; bridged[k] = 1;
+        }
+      }
+      y = y2;
+    }
+  }
+  // Suaviza el relleno en horizontal para que no queden rayas.
+  for (let pass = 0; pass < 3; pass++) for (let y = 0; y < H; y++) for (let x = 3; x < W - 3; x++) {
+    const k = y * W + x; if (!bridged[k]) continue;
+    for (let c = 0; c < 3; c++) { let a = 0; for (let d = -3; d <= 3; d++) a += px[(k + d) * 4 + c]; px[k * 4 + c] = a / 7; }
   }
 }
 

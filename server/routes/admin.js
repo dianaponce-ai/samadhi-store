@@ -17,6 +17,7 @@ import { computeStats, resolveRange } from '../lib/stats-core.js';
 import * as content from '../lib/content.js';
 import * as tryon from '../integrations/fashn.js';
 import * as probador from '../lib/probador.js';
+import * as clothSeg from '../lib/cloth-seg.js';
 
 export const admin = Router();
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
@@ -525,8 +526,8 @@ admin.get('/withdrawals', (req, res) => res.json(content.listWithdrawals()));
 admin.put('/withdrawals/:id', (req, res) => { content.setWithdrawalStatus(int(req.params.id), req.body?.status); res.json({ ok: true }); });
 
 // ── Probador virtual ──
-admin.get('/tryon', (req, res) => res.json({ settings: tryon.tryonSettings(), hidden: tryon.hiddenCategories(), mock: tryon.tryonMock(), stats: tryon.tryonStats(), garmentsOn: get("SELECT COUNT(*) n FROM tryon_garments WHERE status = 'aprobada'").n,
-  categories: all('SELECT id, name FROM categories WHERE visible = 1 ORDER BY position, name') }));
+admin.get('/tryon', wrap(async (req, res) => res.json({ settings: tryon.tryonSettings(), hidden: tryon.hiddenCategories(), mock: tryon.tryonMock(), stats: tryon.tryonStats(), garmentsOn: get("SELECT COUNT(*) n FROM tryon_garments WHERE status = 'aprobada'").n, segmentation: await clothSeg.available(),
+  categories: all('SELECT id, name FROM categories WHERE visible = 1 ORDER BY position, name') })));
 admin.put('/tryon', onlyAdmin, (req, res) => {
   const b = req.body || {}, cur = tryon.tryonSettings();
   setSetting('tryon', {
@@ -554,4 +555,19 @@ admin.get('/img-proxy', wrap(async (req, res) => {
   res.set('Content-Type', r.headers.get('content-type') || 'image/webp');
   res.set('Cache-Control', 'private, max-age=3600');
   res.send(Buffer.from(await r.arrayBuffer()));
+}));
+
+// Máscara de la prenda con el modelo de recorte de ropa (si está instalado en el servidor).
+admin.get('/tryon/mask/:id', wrap(async (req, res) => {
+  if (!(await clothSeg.available())) throw new HttpError(501, 'El recorte automático no está instalado en el servidor.');
+  const imgs = all('SELECT url FROM images WHERE product_id = ? ORDER BY position', int(req.params.id));
+  const im = imgs[int(req.query.image, 0)];
+  if (!im) throw new HttpError(404, 'No encontramos esa foto.');
+  const kind = ['top', 'bottom', 'full'].includes(req.query.kind) ? req.query.kind : 'top';
+  const url = /^https?:/.test(im.url) ? im.url.replace(/-\d+-\d+\.(webp|jpg|png)$/, '-1024-1024.$1') : `${config.publicUrl}${im.url}`;
+  const r = await fetch(url, { signal: AbortSignal.timeout(20000) });
+  if (!r.ok) throw new HttpError(502, 'No pudimos traer la foto.');
+  const buf = Buffer.from(await r.arrayBuffer());
+  const m = await clothSeg.garmentMask(buf, kind);
+  res.set('Content-Type', 'image/png').set('Cache-Control', 'private, max-age=600').send(m.png);
 }));

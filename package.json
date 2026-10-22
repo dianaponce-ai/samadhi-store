@@ -15,7 +15,8 @@
     "download-images": "node --disable-warning=ExperimentalWarning scripts/download-images.js",
     "test": "node --disable-warning=ExperimentalWarning --test test/*.test.js",
     "demo-users": "node --disable-warning=ExperimentalWarning scripts/demo-users.js",
-    "build:demo": "node --disable-warning=ExperimentalWarning scripts/import-tiendanube.js && node --disable-warning=ExperimentalWarning scripts/build-preview.js dist/demo/index.html --standalone"
+    "build:demo": "node --disable-warning=ExperimentalWarning scripts/import-tiendanube.js && node --disable-warning=ExperimentalWarning scripts/build-preview.js dist/demo/index.html --standalone",
+    "probador:instalar": "node --disable-warning=ExperimentalWarning scripts/probador-instalar.js"
   },
   "dependencies": {
     "express": "^5.1.0",

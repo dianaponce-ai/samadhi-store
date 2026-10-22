@@ -5,3 +5,4 @@ data/*.db-*
 data/uploads/
 lince/samadhi-lince.config.ps1
 dist/
+data/modelos/

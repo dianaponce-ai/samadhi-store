@@ -832,10 +832,15 @@ const tryTab = { tab: 'prendas', filter: 'todas', q: '' };
 // Las fotos de Tiendanube se piden a través de la tienda para poder leer sus píxeles.
 const proxied = (u) => (/^https:\/\/acdn(-us)?\.mitiendanube\.com\//.test(u) && !EMBED ? '/api/admin/img-proxy?u=' + encodeURIComponent(u) : u);
 const loadImage = (src) => new Promise((ok, bad) => { const i = new Image(); i.crossOrigin = 'anonymous'; i.onload = () => ok(i); i.onerror = () => bad(new Error('No pudimos cargar la foto.')); i.src = src; });
+let SEG = false; // el servidor tiene instalado el recorte automático de ropa
 async function prepareOne(row, imageIndex, kind) {
   const E = await probEngine();
   const img = await loadImage(proxied(row.images[imageIndex]));
-  const g = await E.prepareGarment(img, kind, { short: E.isShort(row.name) && !/pantal|jean|wide/i.test(row.name) });
+  let g = null;
+  if (SEG && !EMBED) {
+    try { const mask = await loadImage(`/api/admin/tryon/mask/${row.id}?image=${imageIndex}&kind=${kind}`); g = await E.prepareGarmentFromMask(img, mask, kind); } catch { g = null; }
+  }
+  if (!g) g = await E.prepareGarment(img, kind, { short: E.isShort(row.name) && !/pantal|jean|wide/i.test(row.name) });
   if (!g) throw new Error('No encontramos a la modelo en esa foto. Probá con otra foto del producto.');
   return { data: g.canvas.toDataURL('image/webp', 0.86), pts: g.pts.map((p) => ({ name: p.name, x: Math.round(p.x * 10) / 10, y: Math.round(p.y * 10) / 10 })), size: g.size, quality: g.quality, kind, image: imageIndex };
 }
@@ -843,6 +848,7 @@ async function prepareOne(row, imageIndex, kind) {
 async function viewTryon() {
   const d = await api('/tryon');
   const S = d.settings, st = d.stats;
+  SEG = !!d.segmentation;
   const own = S.engine !== 'fashn';
   const conv = st.month ? Math.round((st.added / st.month) * 100) : 0;
   const tabs = [['prendas', 'Prendas'], ['uso', 'Uso'], ...(isAdmin() ? [['ajustes', 'Ajustes']] : [])];
@@ -891,7 +897,8 @@ async function viewTryon() {
         <div class="seg">${[['todas', `Todas (${rows.length})`], ['visibles', `En la tienda (${on})`], ['ocultas', `Ocultas (${off})`], ['sin', `Sin preparar (${none})`]].map(([k, l]) => `<button type="button" data-tf="${k}" aria-pressed="${tryTab.filter === k}">${l}</button>`).join('')}</div>
         <input type="search" id="tq" placeholder="Buscar prenda" value="${esc(tryTab.q)}" style="max-width:220px">
         <span style="flex:1"></span>${isAdmin() || ME.role === 'manager' ? `<button class="btn" type="button" id="prepAll" ${none ? '' : 'disabled'}>Preparar las que faltan</button>` : ''}</div>
-      <p class="small muted" style="margin:-4px 0 12px">Cada prenda se recorta de la foto del producto (la modelo con la prenda puesta). Revisá que el recorte se vea limpio: si se ve mal, rehacelo con otra foto u ocultala. Accesorios y calzado no se pueden probar.</p>
+      <p class="small muted" style="margin:-4px 0 12px">Cada prenda se recorta de la foto del producto (la modelo con la prenda puesta). Revisá que el recorte se vea limpio: si se ve mal, rehacelo con otra foto u ocultala. Accesorios y calzado no se pueden probar.
+        ${SEG ? 'Recorte automático de ropa: activado.' : 'Para recortes precisos de las prendas nuevas instalá el recorte automático en el servidor (<code>npm run probador:instalar</code>).'}</p>
       <div class="garments">${list.map((r) => `<div class="garment ${r.status === 'oculta' ? 'off' : ''}" data-g="${r.id}">
         <div class="g-img">${r.url ? `<img src="${esc(r.url.replace(/^\//, EMBED ? '' : '/'))}" alt="" loading="lazy">` : `<span class="small muted">Sin preparar</span>`}</div>
         <div class="g-body"><b>${esc(r.name)}</b><div class="small muted">${esc(r.cats || '')}</div>
