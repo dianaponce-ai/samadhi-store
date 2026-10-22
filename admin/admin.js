@@ -936,19 +936,37 @@ async function viewTryon() {
     const kind = r.kind || kindGuess(r) || 'top';
     const m = document.createElement('div'); m.className = 'g-modal';
     m.innerHTML = `<div class="card"><div class="card-head"><h2>${esc(r.name)}</h2><button class="btn sm" type="button" data-x>Cerrar</button></div>
-      <p class="small muted">Elegí la foto donde mejor se ve la prenda puesta (de frente, cuerpo entero) y el tipo de prenda.</p>
+      <p class="small muted">Lo mejor: subí una <b>foto de la prenda sola</b>, de frente, recortada (PNG con fondo transparente) o sobre fondo blanco liso. Si no, elegí una foto del producto donde se vea la prenda puesta, de frente y de cuerpo entero.</p>
+      <label class="btn primary" style="margin:6px 0 4px">Subir foto de la prenda sola<input type="file" accept="image/png,image/webp,image/jpeg" id="gflat" hidden></label>
+      <div class="small muted" style="margin:8px 0 2px">O usar una foto del producto:</div>
       <div class="g-pick">${r.images.map((u, i) => `<button type="button" data-i="${i}"><img src="${esc(thumb(u))}" alt="Foto ${i + 1}"></button>`).join('')}</div>
       <label class="fl" style="max-width:220px"><span>Tipo</span><select id="gk">${Object.entries(KIND_ES).map(([k, l]) => `<option value="${k}" ${kind === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
       <div class="g-res" id="gres"><span class="small muted">Tocá una foto para recortar la prenda.</span></div></div>`;
     $('#view').appendChild(m);
     m.querySelector('[data-x]').onclick = () => m.remove();
     let last = null;
+    const showResult = (g) => {
+      last = g;
+      $('#gres').innerHTML = `<div class="g-img big"><img src="${g.data}" alt="Recorte"></div><div class="g-row"><button class="btn primary" type="button" id="gsave">Guardar y mostrar</button>${g.flat ? '<span class="small muted">Prenda sola: se ubica por su forma</span>' : `<span class="small muted">Puntaje automático ${Math.round(g.quality * 100)}%</span>`}</div>`;
+      $('#gsave').onclick = async () => { await api('/tryon/garments/' + r.id, { method: 'POST', body: { ...last, status: 'aprobada' } }); toast('Prenda guardada'); m.remove(); viewTryon(); };
+    };
+    m.querySelector('#gflat').onchange = async (e) => {
+      const f = e.target.files[0]; if (!f) return;
+      $('#gres').innerHTML = '<span class="small muted">Preparando la prenda…</span>';
+      try {
+        const url = URL.createObjectURL(f); const img = await loadImage(url);
+        const g = await E.prepareFlatGarment(img, $('#gk').value); URL.revokeObjectURL(url);
+        if (!g) throw new Error('No encontramos la prenda en esa foto. Usá un PNG recortado o fondo blanco liso.');
+        // Se guarda a un tamaño razonable para que cargue rápido en la tienda.
+        const k = Math.min(1, 900 / Math.max(g.size[0], g.size[1]));
+        const c = document.createElement('canvas'); c.width = Math.round(g.size[0] * k); c.height = Math.round(g.size[1] * k); c.getContext('2d').drawImage(g.canvas, 0, 0, c.width, c.height);
+        showResult({ data: c.toDataURL('image/webp', 0.9), pts: g.pts.map((p) => ({ name: p.name, x: Math.round(p.x * k * 10) / 10, y: Math.round(p.y * k * 10) / 10 })), size: [c.width, c.height], quality: 1, kind: $('#gk').value, image: 0, flat: true });
+      } catch (err) { $('#gres').innerHTML = `<span class="small" style="color:var(--bad)">${esc(err.message)}</span>`; }
+    };
     m.querySelectorAll('[data-i]').forEach((b) => (b.onclick = async () => {
       $('#gres').innerHTML = '<span class="small muted">Recortando… la primera vez tarda unos segundos.</span>';
       try {
-        last = await prepareOne(r, Number(b.dataset.i), $('#gk').value);
-        $('#gres').innerHTML = `<div class="g-img big"><img src="${last.data}" alt="Recorte"></div><div class="g-row"><button class="btn primary" type="button" id="gsave">Guardar y mostrar</button><span class="small muted">Puntaje automático ${Math.round(last.quality * 100)}%</span></div>`;
-        $('#gsave').onclick = async () => { await api('/tryon/garments/' + r.id, { method: 'POST', body: { ...last, status: 'aprobada' } }); toast('Prenda guardada'); m.remove(); viewTryon(); };
+        showResult(await prepareOne(r, Number(b.dataset.i), $('#gk').value));
       } catch (err) { $('#gres').innerHTML = `<span class="small" style="color:var(--bad)">${esc(err.message)}</span>`; }
     }));
   };

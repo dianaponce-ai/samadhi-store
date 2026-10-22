@@ -408,6 +408,76 @@ function bridgeVertical(alpha, keep, px, W, H, maxGap, skin) {
   }
 }
 
+/**
+ * Prenda sin modelo (foto de producto recortada, "fantasma" o plana, idealmente PNG con fondo transparente).
+ * Si la foto tiene fondo blanco liso, también lo saca. Ubica cuello, hombros, mangas y ruedo por la forma.
+ */
+export async function prepareFlatGarment(image, kind) {
+  const W = image.naturalWidth || image.width, H = image.naturalHeight || image.height;
+  const c = document.createElement('canvas'); c.width = W; c.height = H;
+  const ctx = c.getContext('2d', { willReadFrequently: true });
+  ctx.drawImage(image, 0, 0);
+  const img = ctx.getImageData(0, 0, W, H), px = img.data;
+  const alpha = new Float32Array(W * H);
+  let transparent = 0; for (let k = 0; k < W * H; k++) if (px[k * 4 + 3] < 20) transparent++;
+  if (transparent > W * H * 0.05) { for (let k = 0; k < W * H; k++) alpha[k] = px[k * 4 + 3] / 255; }
+  else {
+    // Fondo liso: se "inunda" desde los bordes todo lo que se parece al color de las esquinas.
+    const corner = [0, W - 1, (H - 1) * W, H * W - 1].map((k) => [px[k * 4], px[k * 4 + 1], px[k * 4 + 2]]);
+    const bg = [0, 1, 2].map((ch) => corner.reduce((a, q) => a + q[ch], 0) / 4);
+    const near = (k) => Math.abs(px[k * 4] - bg[0]) + Math.abs(px[k * 4 + 1] - bg[1]) + Math.abs(px[k * 4 + 2] - bg[2]) < 48;
+    const seen = new Uint8Array(W * H), st = [];
+    for (let x = 0; x < W; x++) st.push(x, (H - 1) * W + x); for (let y = 0; y < H; y++) st.push(y * W, y * W + W - 1);
+    while (st.length) { const k = st.pop(); if (seen[k] || !near(k)) continue; seen[k] = 1; const x = k % W; if (x > 0) st.push(k - 1); if (x < W - 1) st.push(k + 1); if (k >= W) st.push(k - W); if (k < W * (H - 1)) st.push(k + W); }
+    for (let k = 0; k < W * H; k++) { alpha[k] = seen[k] ? 0 : 1; px[k * 4 + 3] = seen[k] ? 0 : 255; }
+  }
+  const keep = largestComponent(alpha, W, H);
+  let minX = W, minY = H, maxX = 0, maxY = 0;
+  for (let k = 0; k < W * H; k++) { if (!keep[k]) { px[k * 4 + 3] = 0; continue; } if (alpha[k] > 0.5) { const x = k % W, y = (k / W) | 0; if (x < minX) minX = x; if (x > maxX) maxX = x; if (y < minY) minY = y; if (y > maxY) maxY = y; } }
+  if (maxX <= minX || maxY <= minY) return null;
+  ctx.putImageData(img, 0, 0);
+  const on = (x, y) => x >= 0 && y >= 0 && x < W && y < H && keep[y * W + x] && alpha[y * W + x] > 0.5;
+  const gh = maxY - minY, cx = (minX + maxX) / 2;
+  // Tramos ocupados de una fila: el central es el cuerpo; los de los costados, mangas.
+  const runs = (y) => { const r = []; let x = minX; while (x <= maxX) { if (!on(x, y)) { x++; continue; } const a = x; while (x <= maxX && on(x, y)) x++; r.push([a, x - 1]); } return r; };
+  const extent = (y) => { const r = runs(Math.round(y)); return r.length ? [r[0][0], r.at(-1)[1]] : [cx, cx]; };
+  const torsoRun = (y) => { const r = runs(Math.round(y)); let best = r[0] || [cx, cx]; for (const q of r) if (q[0] <= cx && q[1] >= cx) best = q; return best; };
+  const pts = [];
+  const P = (name, x, y) => pts.push({ name, x, y });
+  if (kind === 'top' || kind === 'full') {
+    const shY = minY + gh * (kind === 'top' ? 0.09 : 0.05);
+    // Hombro: el punto más alto del borde exterior antes de que empiece la manga (aprox. 1/4 del ancho del cuerpo desde el centro, abierto).
+    const [sx0, sx1] = extent(shY);
+    const shW = (sx1 - sx0) * 0.86;
+    P('neck', cx, minY + gh * 0.01);
+    P('shL', cx + shW / 2, shY); P('shR', cx - shW / 2, shY);
+    const len = kind === 'top' ? gh : gh * 0.38; // largo del torso en la prenda
+    const hipY = minY + len * (kind === 'top' ? 0.86 : 0.96); // el ruedo de un saco o una blusa cae un poco debajo de la cadera
+    const t = torsoRun(minY + len * 0.75);
+    const hw = Math.max(shW * 0.4, (t[1] - t[0]) / 2);
+    P('hipL', cx + hw, hipY); P('hipR', cx - hw, hipY); P('hipM', cx, hipY);
+    P('ribL', cx + (shW / 2 + hw) / 2, (shY + hipY) / 2); P('ribR', cx - (shW / 2 + hw) / 2, (shY + hipY) / 2);
+    // Mangas: extremos exteriores a media altura y abajo.
+    const [ex0, ex1] = extent(minY + len * 0.5), [fx0, fx1] = extent(minY + len * 0.8);
+    if (ex1 - ex0 > shW * 1.05) { P('elL', ex1 - shW * 0.08, minY + len * 0.5); P('elR', ex0 + shW * 0.08, minY + len * 0.5); }
+    if (fx1 - fx0 > shW * 1.05) { P('faL', fx1 - shW * 0.08, minY + len * 0.8); P('faR', fx0 + shW * 0.08, minY + len * 0.8); }
+    if (kind === 'full') { const kn = minY + gh * 0.72; const k = torsoRun(kn); P('knL', (cx + k[1]) / 2, kn); P('knR', (cx + k[0]) / 2, kn); P('knM', cx, kn); }
+  } else {
+    const waistY = minY + gh * 0.01, hipY = minY + gh * 0.12;
+    const [w0, w1] = extent(hipY);
+    P('waist', cx, waistY); P('hipL', w1, hipY); P('hipR', w0, hipY); P('hipM', cx, hipY);
+    const kn = minY + gh * 0.55, an = maxY - gh * 0.02;
+    const r = runs(Math.round(kn));
+    if (r.length >= 2) { P('knL', (r.at(-1)[0] + r.at(-1)[1]) / 2, kn); P('knR', (r[0][0] + r[0][1]) / 2, kn); P('knM', cx, kn); }
+    const ra = runs(Math.round(an));
+    if (ra.length >= 2) { P('anL', (ra.at(-1)[0] + ra.at(-1)[1]) / 2, an); P('anR', (ra[0][0] + ra[0][1]) / 2, an); }
+  }
+  const pad = 4, cw = maxX - minX + 1 + pad * 2, ch = maxY - minY + 1 + pad * 2;
+  const out = document.createElement('canvas'); out.width = cw; out.height = ch;
+  out.getContext('2d').drawImage(c, minX - pad, minY - pad, cw, ch, 0, 0, cw, ch);
+  return { canvas: out, pts: pts.map((q) => ({ ...q, x: q.x - minX + pad, y: q.y - minY + pad })), kind, quality: 1, size: [cw, ch], flat: true };
+}
+
 function largestComponent(alpha, W, H) {
   const lab = new Int32Array(W * H), sizes = [0];
   let n = 0;

@@ -33,12 +33,13 @@ const cat = structuredClone(publicCatalog());
 if (limit) cat.products = cat.products.slice(0, limit);
 if (imgDir) {
   const rel = path.basename(imgDir);
-  for (const p of cat.products) p.images = [1, 2].map((n) => `${rel}/${p.slug}-${n}.webp`).filter((f) => existsSync(path.join(imgDir, path.basename(f))));
+  for (const p of cat.products) { const local = [1, 2].map((n) => `${rel}/${p.slug}-${n}.webp`).filter((f) => existsSync(path.join(imgDir, path.basename(f)))); if (local.length) p.images = local; }
   let k = 0;
   cat.banners.forEach((b) => { if (b.video_url) return; k++; const f = `${rel}/banner-${k}.webp`; if (existsSync(path.join(imgDir, path.basename(f)))) b.image_url = f; });
 }
 // Los archivos de /media (video de portada) se publican al lado de la página.
 for (const b of cat.banners) for (const k of ['image_url', 'video_url']) if (String(b[k] || '').startsWith('/media/')) b[k] = b[k].slice(1);
+for (const p of cat.products) p.images = p.images.map((u) => (u.startsWith('/media/') ? u.slice(1) : u));
 // Prendas del probador: rutas relativas para que funcionen al lado de la página.
 const garmentFiles = [];
 for (const g of Object.values(cat.tryon?.garments || {})) { if (g.url.startsWith('/')) { g.url = g.url.slice(1); garmentFiles.push(g.url); } }
@@ -60,7 +61,7 @@ window.__PROBADOR_BASE = ${JSON.stringify(standalone ? 'vendor/mediapipe-pose/' 
 </script>
 <script type="module">
 ${read('public/assets/probador-engine.js').replace(/^export /gm, '')}
-window.__PROBADOR = { KINDS, kindFor, isShort, loadPose, detect, prepareGarment, prepareGarmentFromMask, fitGarment, checkBody, renderLook };
+window.__PROBADOR = { KINDS, kindFor, isShort, loadPose, detect, prepareGarment, prepareGarmentFromMask, prepareFlatGarment, fitGarment, checkBody, renderLook };
 </script>
 <script type="module">
 ${read('server/lib/email-templates.js').replace(/^export /gm, '')}

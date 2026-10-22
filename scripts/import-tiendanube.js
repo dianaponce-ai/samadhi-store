@@ -4,7 +4,7 @@
 import { readFileSync, existsSync } from 'node:fs';
 import path from 'node:path';
 import { ROOT } from '../server/lib/config.js';
-import { importTiendanube, seedBannersIfEmpty, seedFeaturedIfEmpty } from '../server/lib/importer.js';
+import { importTiendanube, seedBannersIfEmpty, seedFeaturedIfEmpty, importExtras } from '../server/lib/importer.js';
 
 const csvPath = process.argv[2] || path.join(ROOT, 'data/import/tiendanube-productos.csv');
 const photosPath = process.argv[3] || path.join(ROOT, 'data/import/fotos-tiendanube.txt');
@@ -16,4 +16,6 @@ if (!existsSync(csvPath)) {
 const stats = importTiendanube(readFileSync(csvPath), existsSync(photosPath) ? readFileSync(photosPath, 'utf8') : '');
 seedFeaturedIfEmpty();
 seedBannersIfEmpty();
+const extras = importExtras(path.join(ROOT, 'data/import/productos-extra.json'));
+if (extras) console.log(`${extras} productos extra (data/import/productos-extra.json).`);
 console.log(`Listo: ${stats.products} productos (${stats.created} nuevos, ${stats.updated} actualizados, ${stats.hidden} ocultos), ${stats.variants} variantes, ${stats.images} fotos.`);

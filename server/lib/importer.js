@@ -1,6 +1,7 @@
 // Importa el CSV que exporta Tiendanube (Productos > Exportar) y, opcionalmente,
 // la lista de fotos por producto. Se puede correr las veces que haga falta:
 // actualiza por "Identificador de URL" y conserva los ids de las variantes.
+import { readFileSync, existsSync } from 'node:fs';
 import { db, all, get, run, tx, getSetting, setSetting } from './db.js';
 import { slugify, titleCase } from './util.js';
 
@@ -258,3 +259,26 @@ export function seedFeaturedIfEmpty() {
 }
 
 export { db };
+
+/**
+ * Productos que no vienen de Tiendanube (por ejemplo, prendas de prueba del probador): data/import/productos-extra.json
+ * [{ slug, name, price, category, images: ['/media/productos/x.png'], sizes: ['S','M'], stock, description }]
+ */
+export function importExtras(file) {
+  if (!existsSync(file)) return 0;
+  const list = JSON.parse(readFileSync(file, 'utf8'));
+  let n = 0;
+  for (const x of list) {
+    let p = get('SELECT id FROM products WHERE slug = ?', x.slug);
+    if (!p) {
+      const pos = (get('SELECT MIN(position) m FROM products').m ?? 0) - 1;
+      const id = Number(run(`INSERT INTO products(slug, name, ref_code, description, collection, visible, featured, free_shipping, position, weight_kg, height_cm, width_cm, depth_cm)
+        VALUES(?,?,?,?,?,1,1,0,?,0.5,5,30,30)`, x.slug, x.name, x.ref || '', x.description || '', x.collection || '', pos).lastInsertRowid);
+      (x.images || []).forEach((u, i) => run('INSERT INTO images(product_id, url, position) VALUES(?,?,?)', id, u, i));
+      (x.sizes?.length ? x.sizes : ['U']).forEach((sz, i) => run('INSERT INTO variants(product_id, color, size, price, stock, position) VALUES(?,?,?,?,?,?)', id, x.color || '', sz, x.price, x.stock ?? 5, i));
+      if (x.category) { const c = get('SELECT id FROM categories WHERE name = ?', x.category); if (c) run('INSERT OR IGNORE INTO product_categories(product_id, category_id) VALUES(?,?)', id, c.id); }
+      n++;
+    }
+  }
+  return n;
+}

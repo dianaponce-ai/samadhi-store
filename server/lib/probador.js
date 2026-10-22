@@ -24,15 +24,16 @@ CREATE TABLE IF NOT EXISTS tryon_garments (
 
 /** Primera vez: carga las prendas que vienen preparadas con el catálogo (public/probador). */
 export function seedGarments() {
-  if (get('SELECT COUNT(*) n FROM tryon_garments').n) return;
-  const f = path.join(ROOT, 'public/probador/prendas.json');
-  if (!existsSync(f)) return;
-  const m = JSON.parse(readFileSync(f, 'utf8'));
-  for (const [slug, g] of Object.entries(m)) {
-    const p = get('SELECT id FROM products WHERE slug = ?', slug);
-    if (!p) continue;
-    run('INSERT OR IGNORE INTO tryon_garments(product_id, url, kind, image_index, pts, w, h, quality, status) VALUES(?,?,?,?,?,?,?,?,?)',
-      p.id, `/probador/${slug}.webp`, g.kind, g.image || 0, JSON.stringify(g.pts), g.size[0], g.size[1], g.quality || 0, g.ok ? 'aprobada' : 'oculta');
+  for (const file of ['prendas.json', 'planas.json']) {
+    const f = path.join(ROOT, 'public/probador', file);
+    if (!existsSync(f)) continue;
+    const m = JSON.parse(readFileSync(f, 'utf8'));
+    for (const [slug, g] of Object.entries(m)) {
+      const p = get('SELECT id FROM products WHERE slug = ?', slug);
+      if (!p) continue;
+      run('INSERT OR IGNORE INTO tryon_garments(product_id, url, kind, image_index, pts, w, h, quality, status) VALUES(?,?,?,?,?,?,?,?,?)',
+        p.id, `/probador/${slug}.webp`, g.kind, g.image || 0, JSON.stringify(g.pts), g.size[0], g.size[1], g.quality || 0, g.ok ? 'aprobada' : 'oculta');
+    }
   }
 }
 

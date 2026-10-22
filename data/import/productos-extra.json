@@ -1,0 +1,13 @@
+[
+  {
+    "slug": "blazer-fucsia-prueba",
+    "name": "Blazer Fucsia (prueba del probador)",
+    "price": 99000,
+    "category": "Sacos",
+    "collection": "",
+    "images": ["/media/productos/blazer-fucsia-prueba.png"],
+    "sizes": ["S", "M", "L"],
+    "stock": 5,
+    "description": "Producto de prueba para el probador: foto de la prenda sola, recortada (PNG con fondo transparente)."
+  }
+]
