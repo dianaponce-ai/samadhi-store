@@ -1,0 +1,1 @@
+MediaPipe Pose 0.5 (Apache-2.0) · @mediapipe/pose en npm. Se sirve desde la tienda para que el probador funcione sin servicios externos.

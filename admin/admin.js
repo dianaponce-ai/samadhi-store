@@ -69,7 +69,7 @@ ROOT.addEventListener('click', (e) => {
 // ── Navegación ───────────────────────────────────────────
 const SECTIONS = [
   ['resumen', 'Resumen'], ['estadisticas', 'Estadísticas'], ['pedidos', 'Pedidos'], ['productos', 'Productos'], ['stock', 'Stock y precios'],
-  ['categorias', 'Categorías'], ['clientes', 'Clientes'], ['carritos', 'Carritos'], ['probador', 'Probador IA'], ['lince', 'Lince'], ['arrepentimientos', 'Arrepentimientos'], ['cupones', 'Cupones'], ['banners', 'Banners'], ['contenido', 'Contenido'],
+  ['categorias', 'Categorías'], ['clientes', 'Clientes'], ['carritos', 'Carritos'], ['probador', 'Probador'], ['lince', 'Lince'], ['arrepentimientos', 'Arrepentimientos'], ['cupones', 'Cupones'], ['banners', 'Banners'], ['contenido', 'Contenido'],
   ['emails', 'Emails'], ['importar', 'Importar'], ['configuracion', 'Configuración'], ['usuarios', 'Usuarios'],
 ];
 // Secciones que solo ve el rol Administrador. El gerente maneja pedidos, catálogo, clientes, cupones y banners.
@@ -825,38 +825,127 @@ async function viewStats() {
 }
 
 // ── Probador virtual ─────────────────────────────────────
+let PROB = null;
+const probEngine = async () => PROB || (PROB = window.__PROBADOR || (await import('/assets/probador-engine.js')));
+const KIND_ES = { top: 'Arriba', bottom: 'Abajo', full: 'Entera' };
+const tryTab = { tab: 'prendas', filter: 'todas', q: '' };
+// Las fotos de Tiendanube se piden a través de la tienda para poder leer sus píxeles.
+const proxied = (u) => (/^https:\/\/acdn(-us)?\.mitiendanube\.com\//.test(u) && !EMBED ? '/api/admin/img-proxy?u=' + encodeURIComponent(u) : u);
+const loadImage = (src) => new Promise((ok, bad) => { const i = new Image(); i.crossOrigin = 'anonymous'; i.onload = () => ok(i); i.onerror = () => bad(new Error('No pudimos cargar la foto.')); i.src = src; });
+async function prepareOne(row, imageIndex, kind) {
+  const E = await probEngine();
+  const img = await loadImage(proxied(row.images[imageIndex]));
+  const g = await E.prepareGarment(img, kind, { short: E.isShort(row.name) && !/pantal|jean|wide/i.test(row.name) });
+  if (!g) throw new Error('No encontramos a la modelo en esa foto. Probá con otra foto del producto.');
+  return { data: g.canvas.toDataURL('image/webp', 0.86), pts: g.pts.map((p) => ({ name: p.name, x: Math.round(p.x * 10) / 10, y: Math.round(p.y * 10) / 10 })), size: g.size, quality: g.quality, kind, image: imageIndex };
+}
+
 async function viewTryon() {
   const d = await api('/tryon');
-  const st = d.stats, S = d.settings;
+  const S = d.settings, st = d.stats;
+  const own = S.engine !== 'fashn';
   const conv = st.month ? Math.round((st.added / st.month) * 100) : 0;
+  const tabs = [['prendas', 'Prendas'], ['uso', 'Uso'], ...(isAdmin() ? [['ajustes', 'Ajustes']] : [])];
   $('#view').innerHTML = `
-    <div class="page-head"><div><h1>Probador IA</h1><div class="sub">Las clientas suben una foto de cuerpo entero y ven la prenda puesta, generada con inteligencia artificial.</div></div></div>
-    <div class="card" style="margin-bottom:14px;display:flex;gap:14px;align-items:center;flex-wrap:wrap"><span class="pill ${d.mock ? 's-pending_payment' : 's-delivered'}">${d.mock ? 'Modo prueba' : 'Conectado a FASHN'}</span>
-      <span class="small muted" style="flex:1;min-width:240px">${d.mock ? 'Falta la clave del servicio de IA (FASHN_API_KEY en el archivo .env). Mientras tanto el probador muestra la foto y la prenda sin generar la imagen, y en la tienda publicada no aparece.' : 'Cada imagen generada usa 1 crédito de FASHN. Las fotos de las clientas no se guardan en la tienda.'}</span></div>
-    <div class="grid g4" style="margin-bottom:14px">
-      <div class="card kpi accent"><div class="l">Pruebas hoy</div><div class="v">${num(st.today)}</div><div class="l">límite ${num(S.dailyLimit)} por día</div></div>
-      <div class="card kpi"><div class="l">Últimos 30 días</div><div class="v">${num(st.month)}</div><div class="l">imágenes generadas</div></div>
+    <div class="page-head"><div><h1>Probador</h1><div class="sub">${own ? 'Motor propio: corre en el celular de la clienta, sin costo por prueba y sin que su foto salga del dispositivo.' : 'Motor FASHN: imagen generada con IA, 1 crédito por prueba.'}</div></div></div>
+    <div class="seg" role="tablist" style="margin-bottom:14px">${tabs.map(([k, l]) => `<button type="button" role="tab" data-ttab="${k}" aria-pressed="${tryTab.tab === k}">${l}</button>`).join('')}</div>
+    <div id="tryPane"></div>`;
+  $$('[data-ttab]').forEach((b) => (b.onclick = () => { tryTab.tab = b.dataset.ttab; viewTryon(); }));
+  const pane = $('#tryPane');
+  if (tryTab.tab === 'uso') {
+    pane.innerHTML = `<div class="grid g4" style="margin-bottom:14px">
+      <div class="card kpi accent"><div class="l">Pruebas hoy</div><div class="v">${num(st.today)}</div><div class="l">${own ? 'sin costo' : `límite ${num(S.dailyLimit)} por día`}</div></div>
+      <div class="card kpi"><div class="l">Últimos 30 días</div><div class="v">${num(st.month)}</div><div class="l">prendas probadas</div></div>
       <div class="card kpi"><div class="l">Sumadas a la bolsa</div><div class="v">${conv}%</div><div class="l">${num(st.added)} después de probarse</div></div>
-      <div class="card kpi"><div class="l">Tiempo promedio</div><div class="v">${st.avgSeconds ? st.avgSeconds.toLocaleString('es-AR') + ' s' : '—'}</div><div class="l">${num(st.errors)} fotos no sirvieron</div></div>
-    </div>
-    <div class="grid g2" style="align-items:start">
+      <div class="card kpi"><div class="l">${own ? 'Prendas en el probador' : 'Fotos que no sirvieron'}</div><div class="v">${own ? num(d.garmentsOn ?? 0) : num(st.errors)}</div><div class="l">${own ? 'visibles en la tienda' : 'últimos 30 días'}</div></div></div>
       <div class="card"><h2>Lo más probado · 30 días</h2>${st.top.length ? `<div class="tablewrap"><table><thead><tr><th>Prenda</th><th class="r">Pruebas</th><th class="r">A la bolsa</th></tr></thead><tbody>
-        ${st.top.map((p) => `<tr><td><div style="display:flex;gap:10px;align-items:center">${p.image ? `<img class="thumb" src="${esc(thumb(p.image))}" alt="">` : ''}<a class="linkish" href="#producto/${p.product_id}">${esc(p.name)}</a></div></td><td class="r n">${num(p.tries)}</td><td class="r n">${num(p.added)}</td></tr>`).join('')}</tbody></table></div>` : '<div class="empty small">Todavía nadie usó el probador.</div>'}</div>
-      ${isAdmin() ? `<form class="card" id="trSet"><h2>Ajustes</h2>
-        <label class="fl" style="flex-direction:row;align-items:center;gap:10px;margin-bottom:12px"><label class="switch"><input type="checkbox" name="enabled" ${S.enabled ? 'checked' : ''}><span></span></label><span>Mostrar el probador en la tienda</span></label>
-        <div class="row"><label class="fl"><span>Límite por día (toda la tienda)</span><input type="number" min="1" name="dailyLimit" value="${S.dailyLimit}"></label>
-          <label class="fl"><span>Por persona, por hora</span><input type="number" min="1" name="perHour" value="${S.perHour}"></label></div>
-        <label class="fl"><span>Calidad</span><select name="mode">${[['performance', 'Rápida (5 s)'], ['balanced', 'Equilibrada (8 s)'], ['quality', 'Máxima (15 s)']].map(([k, l]) => `<option value="${k}" ${S.mode === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
-        <div class="fl" style="margin-top:10px"><span>Categorías sin probador</span><div class="chips">${d.categories.map((c) => `<label><input type="checkbox" name="hidden" value="${c.id}" ${d.hidden.includes(c.id) ? 'checked' : ''}> ${esc(c.name)}</label>`).join('')}</div>
-          <span class="small muted">Accesorios y calzado no funcionan bien con la IA: vienen marcados.</span></div>
-        <button class="btn primary" type="submit" style="margin-top:12px">Guardar</button></form>` : ''}
-    </div>`;
-  const f = $('#trSet');
-  if (f) f.onsubmit = async (e) => {
-    e.preventDefault();
-    try { await api('/tryon', { method: 'PUT', body: { enabled: f.enabled.checked, dailyLimit: f.dailyLimit.value, perHour: f.perHour.value, mode: f.mode.value, hiddenCategories: $$('#trSet [name=hidden]:checked').map((x) => Number(x.value)) } }); toast('Ajustes guardados'); }
-    catch (err) { toast(err.message, true); }
+        ${st.top.map((p) => `<tr><td><div style="display:flex;gap:10px;align-items:center">${p.image ? `<img class="thumb" src="${esc(thumb(p.image))}" alt="">` : ''}<a class="linkish" href="#producto/${p.product_id}">${esc(p.name)}</a></div></td><td class="r n">${num(p.tries)}</td><td class="r n">${num(p.added)}</td></tr>`).join('')}</tbody></table></div>` : '<div class="empty small">Todavía nadie usó el probador.</div>'}</div>`;
+    return;
+  }
+  if (tryTab.tab === 'ajustes') {
+    pane.innerHTML = `<form class="card" id="trSet" style="max-width:760px"><h2>Ajustes</h2>
+      <label class="fl" style="flex-direction:row;align-items:center;gap:10px;margin-bottom:14px"><label class="switch"><input type="checkbox" name="enabled" ${S.enabled ? 'checked' : ''}><span></span></label><span>Mostrar el probador en la tienda</span></label>
+      <div class="fl"><span>Motor</span>
+        <label class="radio-card"><input type="radio" name="engine" value="samadhi" ${own ? 'checked' : ''}><span><b>Samadhi (propio)</b><small>Gratis e ilimitado. Calza las prendas preparadas sobre la foto o en vivo con la cámara. Es una simulación 2D: sirve para ver combinaciones y largos.</small></span></label>
+        <label class="radio-card"><input type="radio" name="engine" value="fashn" ${own ? '' : 'checked'}><span><b>FASHN (IA generativa)</b><small>Imagen fotorrealista, unos 8 segundos y 1 crédito por prueba. ${d.mock ? 'Falta FASHN_API_KEY en el archivo .env.' : 'Conectado.'}</small></span></label></div>
+      <div class="row" style="margin-top:12px"><label class="fl"><span>FASHN · límite por día</span><input type="number" min="1" name="dailyLimit" value="${S.dailyLimit}"></label>
+        <label class="fl"><span>FASHN · por persona, por hora</span><input type="number" min="1" name="perHour" value="${S.perHour}"></label>
+        <label class="fl"><span>FASHN · calidad</span><select name="mode">${[['performance', 'Rápida'], ['balanced', 'Equilibrada'], ['quality', 'Máxima']].map(([k, l]) => `<option value="${k}" ${S.mode === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label></div>
+      <button class="btn primary" type="submit" style="margin-top:12px">Guardar</button></form>`;
+    $('#trSet').onsubmit = async (e) => {
+      e.preventDefault(); const f = e.target;
+      try { await api('/tryon', { method: 'PUT', body: { enabled: f.enabled.checked, engine: f.engine.value, dailyLimit: f.dailyLimit.value, perHour: f.perHour.value, mode: f.mode.value } }); toast('Ajustes guardados'); viewTryon(); }
+      catch (err) { toast(err.message, true); }
+    };
+    return;
+  }
+  // Prendas
+  const rows = await api('/tryon/garments');
+  let E = null;
+  const kindGuess = (r) => (PROB || window.__PROBADOR)?.kindFor(r.name) || (PROB || window.__PROBADOR)?.kindFor(r.cats || '') || null;
+  const draw = () => {
+    const q = tryTab.q.toLowerCase();
+    const list = rows.filter((r) => (tryTab.filter === 'todas' || (tryTab.filter === 'visibles' ? r.status === 'aprobada' : tryTab.filter === 'ocultas' ? r.status === 'oculta' : !r.url)) && (!q || r.name.toLowerCase().includes(q)));
+    const on = rows.filter((r) => r.status === 'aprobada').length, off = rows.filter((r) => r.status === 'oculta').length, none = rows.filter((r) => !r.url).length;
+    pane.innerHTML = `<div class="card" style="margin-bottom:14px;display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+        <div class="seg">${[['todas', `Todas (${rows.length})`], ['visibles', `En la tienda (${on})`], ['ocultas', `Ocultas (${off})`], ['sin', `Sin preparar (${none})`]].map(([k, l]) => `<button type="button" data-tf="${k}" aria-pressed="${tryTab.filter === k}">${l}</button>`).join('')}</div>
+        <input type="search" id="tq" placeholder="Buscar prenda" value="${esc(tryTab.q)}" style="max-width:220px">
+        <span style="flex:1"></span>${isAdmin() || ME.role === 'manager' ? `<button class="btn" type="button" id="prepAll" ${none ? '' : 'disabled'}>Preparar las que faltan</button>` : ''}</div>
+      <p class="small muted" style="margin:-4px 0 12px">Cada prenda se recorta de la foto del producto (la modelo con la prenda puesta). Revisá que el recorte se vea limpio: si se ve mal, rehacelo con otra foto u ocultala. Accesorios y calzado no se pueden probar.</p>
+      <div class="garments">${list.map((r) => `<div class="garment ${r.status === 'oculta' ? 'off' : ''}" data-g="${r.id}">
+        <div class="g-img">${r.url ? `<img src="${esc(r.url.replace(/^\//, EMBED ? '' : '/'))}" alt="" loading="lazy">` : `<span class="small muted">Sin preparar</span>`}</div>
+        <div class="g-body"><b>${esc(r.name)}</b><div class="small muted">${esc(r.cats || '')}</div>
+          ${r.url ? `<div class="g-row"><select data-kind aria-label="Tipo de prenda">${Object.entries(KIND_ES).map(([k, l]) => `<option value="${k}" ${r.kind === k ? 'selected' : ''}>${l}</option>`).join('')}</select>
+            <label class="switch" title="Visible en la tienda"><input type="checkbox" data-on ${r.status === 'aprobada' ? 'checked' : ''} aria-label="Mostrar ${esc(r.name)} en el probador"><span></span></label></div>` : ''}
+          <div class="g-row"><button class="btn sm" type="button" data-redo>${r.url ? 'Rehacer' : 'Preparar'}</button>${r.source === 'panel' ? '<span class="small muted">hecha en el panel</span>' : ''}</div></div></div>`).join('') || '<div class="card empty">No hay prendas con ese filtro.</div>'}</div>`;
+    $$('[data-tf]').forEach((b) => (b.onclick = () => { tryTab.filter = b.dataset.tf; draw(); }));
+    $('#tq').oninput = (e) => { tryTab.q = e.target.value; const pos = e.target.selectionStart; draw(); const t = $('#tq'); t.focus(); t.setSelectionRange(pos, pos); };
+    $$('.garment').forEach((card) => {
+      const r = rows.find((x) => x.id === Number(card.dataset.g));
+      card.querySelector('[data-on]')?.addEventListener('change', async (e) => { r.status = e.target.checked ? 'aprobada' : 'oculta'; await api('/tryon/garments/' + r.id, { method: 'PUT', body: { status: r.status } }); toast(e.target.checked ? 'Visible en el probador' : 'Oculta en el probador'); draw(); });
+      card.querySelector('[data-kind]')?.addEventListener('change', async (e) => { r.kind = e.target.value; await api('/tryon/garments/' + r.id, { method: 'PUT', body: { kind: r.kind } }); toast('Tipo actualizado: conviene rehacerla'); });
+      card.querySelector('[data-redo]').onclick = () => redo(r);
+    });
+    const all = $('#prepAll');
+    if (all) all.onclick = async () => {
+      const todo = rows.filter((r) => !r.url && kindGuess(r) && !/calzado|accesorio|swim|pijama/i.test(r.cats || ''));
+      if (!todo.length) { toast('No hay prendas para preparar (las que faltan son accesorios o no se reconoce el tipo)'); return; }
+      all.disabled = true;
+      let ok = 0;
+      for (const [n, r] of todo.entries()) {
+        all.textContent = `Preparando ${n + 1} de ${todo.length}…`;
+        try {
+          let best = null;
+          for (const i of [0, 1].filter((i) => r.images[i])) { const g = await prepareOne(r, i, kindGuess(r)); if (!best || g.quality > best.quality) best = g; }
+          await api('/tryon/garments/' + r.id, { method: 'POST', body: { ...best, status: best.quality >= 0.6 ? 'aprobada' : 'oculta' } }); ok++;
+        } catch {}
+      }
+      toast(`Listas ${ok} de ${todo.length}. Revisá las que quedaron ocultas.`);
+      viewTryon();
+    };
   };
+  const redo = async (r) => {
+    E = await probEngine();
+    const kind = r.kind || kindGuess(r) || 'top';
+    const m = document.createElement('div'); m.className = 'g-modal';
+    m.innerHTML = `<div class="card"><div class="card-head"><h2>${esc(r.name)}</h2><button class="btn sm" type="button" data-x>Cerrar</button></div>
+      <p class="small muted">Elegí la foto donde mejor se ve la prenda puesta (de frente, cuerpo entero) y el tipo de prenda.</p>
+      <div class="g-pick">${r.images.map((u, i) => `<button type="button" data-i="${i}"><img src="${esc(thumb(u))}" alt="Foto ${i + 1}"></button>`).join('')}</div>
+      <label class="fl" style="max-width:220px"><span>Tipo</span><select id="gk">${Object.entries(KIND_ES).map(([k, l]) => `<option value="${k}" ${kind === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+      <div class="g-res" id="gres"><span class="small muted">Tocá una foto para recortar la prenda.</span></div></div>`;
+    $('#view').appendChild(m);
+    m.querySelector('[data-x]').onclick = () => m.remove();
+    let last = null;
+    m.querySelectorAll('[data-i]').forEach((b) => (b.onclick = async () => {
+      $('#gres').innerHTML = '<span class="small muted">Recortando… la primera vez tarda unos segundos.</span>';
+      try {
+        last = await prepareOne(r, Number(b.dataset.i), $('#gk').value);
+        $('#gres').innerHTML = `<div class="g-img big"><img src="${last.data}" alt="Recorte"></div><div class="g-row"><button class="btn primary" type="button" id="gsave">Guardar y mostrar</button><span class="small muted">Puntaje automático ${Math.round(last.quality * 100)}%</span></div>`;
+        $('#gsave').onclick = async () => { await api('/tryon/garments/' + r.id, { method: 'POST', body: { ...last, status: 'aprobada' } }); toast('Prenda guardada'); m.remove(); viewTryon(); };
+      } catch (err) { $('#gres').innerHTML = `<span class="small" style="color:var(--bad)">${esc(err.message)}</span>`; }
+    }));
+  };
+  probEngine().then(draw, draw);
 }
 
 // ── Contenido de la tienda ───────────────────────────────

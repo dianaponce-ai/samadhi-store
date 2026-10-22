@@ -145,4 +145,5 @@ store.get('/reviews', wrap(async (req, res) => {
 // ── Probador virtual ──
 store.post('/tryon', wrap(async (req, res) => res.json(await tryon.startTryon(req.body || {}, req.ip))));
 store.get('/tryon/:id', wrap(async (req, res) => { res.set('Cache-Control', 'no-store'); res.json(await tryon.pollTryon(req.params.id)); }));
+store.post('/tryon/log', (req, res) => res.json(tryon.logOwnTry(req.body?.productId, req.ip)));
 store.post('/tryon/added', (req, res) => { tryon.markAdded(req.body?.log); res.json({ ok: true }); });

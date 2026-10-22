@@ -6,6 +6,7 @@ import crypto from 'node:crypto';
 import { config } from '../lib/config.js';
 import { db, all, get, run, getSetting } from '../lib/db.js';
 import { HttpError } from '../lib/util.js';
+import { publicGarments } from '../lib/probador.js';
 
 db.exec(`
 CREATE TABLE IF NOT EXISTS tryon_log (
@@ -22,7 +23,8 @@ CREATE INDEX IF NOT EXISTS tryon_log_at ON tryon_log(at);
 `);
 
 const API = 'https://api.fashn.ai/v1';
-export const TRYON_DEFAULTS = { enabled: true, dailyLimit: 300, perHour: 12, mode: 'balanced', hiddenCategories: null };
+// engine: 'samadhi' (motor propio, gratis, en el navegador) o 'fashn' (IA generativa, pago por imagen).
+export const TRYON_DEFAULTS = { enabled: true, engine: 'samadhi', dailyLimit: 300, perHour: 12, mode: 'balanced', hiddenCategories: null };
 const ACCESSORY = /acces|bolso|cartera|cintur|bijou|aros|collar|pa[ñn]uelo|sombrero|gorro|lentes|calzado|zapat|bota|sandal|media/i;
 
 export function tryonSettings() { return { ...TRYON_DEFAULTS, ...getSetting('tryon') }; }
@@ -35,7 +37,18 @@ export function hiddenCategories() {
 }
 export function publicTryon() {
   const s = tryonSettings();
-  return { enabled: !!s.enabled && (!tryonMock() || !config.production), mock: tryonMock(), hidden: hiddenCategories() };
+  if (s.engine !== 'fashn') {
+    const garments = publicGarments();
+    return { enabled: !!s.enabled && Object.keys(garments).length > 0, engine: 'samadhi', garments, hidden: [] };
+  }
+  return { enabled: !!s.enabled && (!tryonMock() || !config.production), engine: 'fashn', mock: tryonMock(), hidden: hiddenCategories() };
+}
+/** Uso del motor propio (no viaja ninguna foto: sólo qué prenda se probó). */
+export function logOwnTry(productId, ip) {
+  if (!get('SELECT id FROM products WHERE id = ?', Number(productId))) throw new HttpError(404, 'No encontramos esa prenda.');
+  const who = whoHash(ip);
+  if (get("SELECT COUNT(*) n FROM tryon_log WHERE who = ? AND at > datetime('now','-1 hour')", who).n > 200) return { log: null };
+  return { log: Number(run("INSERT INTO tryon_log(product_id, who, status, ms) VALUES(?, ?, 'propio', 0)", Number(productId), who).lastInsertRowid) };
 }
 
 const jobs = new Map(); // id → { fashnId, logId, started, productId }
@@ -115,9 +128,9 @@ export async function pollTryon(id) {
 export function markAdded(logId) { run('UPDATE tryon_log SET added = 1 WHERE id = ?', Number(logId)); }
 
 export function tryonStats() {
-  const day = (n) => get(`SELECT COUNT(*) n, SUM(added) a FROM tryon_log WHERE at > datetime('now', ?) AND status IN ('lista','prueba')`, `-${n} days`);
+  const day = (n) => get(`SELECT COUNT(*) n, SUM(added) a FROM tryon_log WHERE at > datetime('now', ?) AND status IN ('lista','prueba','propio')`, `-${n} days`);
   const top = all(`SELECT t.product_id, p.name, COUNT(*) tries, SUM(t.added) added, (SELECT url FROM images WHERE product_id = p.id ORDER BY position LIMIT 1) image
-    FROM tryon_log t JOIN products p ON p.id = t.product_id WHERE t.at > datetime('now','-30 days') AND t.status IN ('lista','prueba') GROUP BY t.product_id ORDER BY tries DESC LIMIT 10`);
+    FROM tryon_log t JOIN products p ON p.id = t.product_id WHERE t.at > datetime('now','-30 days') AND t.status IN ('lista','prueba','propio') GROUP BY t.product_id ORDER BY tries DESC LIMIT 10`);
   const errors = get(`SELECT COUNT(*) n FROM tryon_log WHERE at > datetime('now','-30 days') AND status = 'error'`).n;
   const avg = get(`SELECT AVG(ms) ms FROM tryon_log WHERE at > datetime('now','-30 days') AND status = 'lista'`).ms;
   const today = day(1), month = day(30);

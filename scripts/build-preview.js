@@ -6,7 +6,9 @@ import { ROOT } from '../server/lib/config.js';
 import { publicCatalog } from '../server/lib/catalog.js';
 import { DEMO_USERS } from './demo-users-list.js';
 import { seedHeroVideo } from '../server/lib/importer.js';
+import { seedGarments } from '../server/lib/probador.js';
 seedHeroVideo();
+seedGarments();
 
 const out = process.argv.find((a) => a.endsWith('.html')) || path.join(ROOT, 'dist/vista-previa.html');
 const arg = (k) => (process.argv.find((a) => a.startsWith(`--${k}=`)) || '').split('=')[1];
@@ -37,6 +39,9 @@ if (imgDir) {
 }
 // Los archivos de /media (video de portada) se publican al lado de la página.
 for (const b of cat.banners) for (const k of ['image_url', 'video_url']) if (String(b[k] || '').startsWith('/media/')) b[k] = b[k].slice(1);
+// Prendas del probador: rutas relativas para que funcionen al lado de la página.
+const garmentFiles = [];
+for (const g of Object.values(cat.tryon?.garments || {})) { if (g.url.startsWith('/')) { g.url = g.url.slice(1); garmentFiles.push(g.url); } }
 const j = (v) => JSON.stringify(v).replace(/</g, '\\u003c');
 
 const page = `<title>Samadhi Style</title>
@@ -51,6 +56,11 @@ window.SAMADHI_EMBED = ${j(cat)};
 window.__SAMADHI_DEMO_USERS = ${j(DEMO_USERS)};
 window.__ADMIN_CSS = ${j(adminCss)};
 window.__ADMIN_HTML = ${j(adminHtml)};
+window.__PROBADOR_BASE = ${JSON.stringify(standalone ? 'vendor/mediapipe-pose/' : 'https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5.1675469404/')};
+</script>
+<script type="module">
+${read('public/assets/probador-engine.js').replace(/^export /gm, '')}
+window.__PROBADOR = { KINDS, kindFor, isShort, loadPose, detect, prepareGarment, fitGarment, checkBody, renderLook };
 </script>
 <script type="module">
 ${read('server/lib/email-templates.js').replace(/^export /gm, '')}
@@ -98,5 +108,8 @@ if (standalone) {
   const j2 = full.indexOf('</style>') + 8;
   writeFileSync(out, full.slice(0, j2) + '\n</head>\n<body>' + full.slice(j2) + '</body>\n</html>\n');
   cpSync(path.join(ROOT, 'public/media'), path.join(path.dirname(out), 'media'), { recursive: true });
+  cpSync(path.join(ROOT, 'public/vendor'), path.join(path.dirname(out), 'vendor'), { recursive: true });
+  for (const f of garmentFiles) cpSync(path.join(ROOT, 'public', f), path.join(path.dirname(out), f));
 } else writeFileSync(out, page);
+if (!standalone) writeFileSync(path.join(path.dirname(out), 'probador-archivos.txt'), garmentFiles.join('\n'));
 console.log(`${out} · ${(page.length / 1024).toFixed(0)} KB · ${cat.products.length} productos`);

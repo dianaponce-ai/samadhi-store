@@ -1,6 +1,6 @@
 // Servidor de prueba para la vista previa: responde las mismas rutas que server/ pero en el navegador,
 // con el catálogo real y pedidos de ejemplo. Los cambios se guardan solo en este navegador.
-const KEY = 'samadhi-demo-v7';
+const KEY = 'samadhi-demo-v8';
 const SEED = window.SAMADHI_EMBED;
 const DEMO_USERS = window.__SAMADHI_DEMO_USERS;
 
@@ -23,7 +23,7 @@ const slugify = (s) => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]
 // ── Estado inicial ─────────────────────────────────────
 function seedState() {
   const st = {
-    v: 7,
+    v: 8,
     products: SEED.products.map((p, i) => ({
       id: p.id, slug: p.slug, name: p.name, ref_code: p.ref || '', description: p.desc || '', collection: p.collection || '',
       visible: 1, featured: p.featured ? 1 : 0, free_shipping: p.freeShipping ? 1 : 0, position: i, weight_kg: 0.5, height_cm: 5, width_cm: 30, depth_cm: 30,
@@ -38,7 +38,7 @@ function seedState() {
         origin: { calle: '', numero: '', codigoPostal: '', localidad: '', region: 'AR-B', pais: 'Argentina' }, sender: { nombreCompleto: 'Samadhi Style', email: '', documentoTipo: 'CUIT', documentoNumero: '', telefono: '' } },
       payments: { installments: 3, transferEnabled: true, transferDiscount: 10, bankHolder: 'Samadhi Style (ejemplo)', bankName: 'Banco de ejemplo', bankCbu: '0000003100000000000001', bankAlias: 'SAMADHI.STYLE.EJEMPLO', transferHours: 48 },
       checkout: { requireDni: true, orderPrefix: 'S', nextOrderNumber: 1001 },
-      tryon: { enabled: true, dailyLimit: 300, perHour: 12, mode: 'balanced', hiddenCategories: null },
+      tryon: { enabled: true, engine: 'samadhi', dailyLimit: 300, perHour: 12, mode: 'balanced', hiddenCategories: null },
       content: { ...window.__CONTENT.CONTENT_DEFAULTS, faq: window.__CONTENT.CONTENT_DEFAULTS.faq.map((x) => ({ ...x })) },
       emails: { enabled: Object.fromEntries(Object.keys(window.__EMAIL.TEMPLATES).map((k) => [k, true])), paymentReminderHours: 24, transferReminderHoursBefore: 12, pickupReminderDays: 3, cartReminder1Hours: 1, cartReminder2Hours: 48, staffEmails: 'admin@samadhistyle.com.ar' },
     },
@@ -47,7 +47,8 @@ function seedState() {
       { id: 1, code: 'BIENVENIDA10', kind: 'percent', value: 10, min_subtotal: 0, max_uses: null, uses: 3, starts_at: null, ends_at: null, active: 1 },
       { id: 2, code: 'ENVIOGRATIS', kind: 'free_shipping', value: 0, min_subtotal: 150000, max_uses: 50, uses: 7, starts_at: null, ends_at: null, active: 1 },
     ],
-    webhooks: [], carts: [], emails: [], resets: [], withdrawals: [], tryons: [], lince: { settings: { autoMinutes: 15, updatePrices: false }, since: null, syncs: [] },
+    webhooks: [], carts: [], emails: [], resets: [], withdrawals: [], tryons: [],
+    garments: Object.fromEntries(Object.entries(SEED.tryon?.garments || {}).map(([id, g]) => [id, { ...g, status: 'aprobada', source: 'catálogo' }])), lince: { settings: { autoMinutes: 15, updatePrices: false }, since: null, syncs: [] },
     ids: { order: 0, customer: 0, coupon: 2, banner: 100, category: 1000, product: 100000, variant: 1000000, staff: 10, event: 0, cart: 0, email: 0 },
     session: { staff: null, customer: null },
   };
@@ -262,7 +263,7 @@ function event(st, o, kind, message, at) { o.events.unshift({ id: ++st.ids.event
 
 let S;
 function load() {
-  try { const raw = localStorage.getItem(KEY); if (raw) { const st = JSON.parse(raw); if (st.v === 7 && st.products?.length === SEED.products.length) return st; } } catch {}
+  try { const raw = localStorage.getItem(KEY); if (raw) { const st = JSON.parse(raw); if (st.v === 8 && st.products?.length === SEED.products.length) return st; } } catch {}
   return seedState();
 }
 function save() { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch {} }
@@ -297,7 +298,8 @@ function publicCatalog() {
     banners: S.banners.filter((b) => b.active).sort((a, b) => a.position - b.position),
     store: { name: st.store.name, tagline: st.store.tagline, instagram: st.store.instagram, whatsapp: st.store.whatsapp, email: st.store.email, announcement: st.store.announcement },
     shipping: { pickup: st.shipping.pickupEnabled ? { address: st.shipping.pickupAddress, hours: st.shipping.pickupHours } : null, freeShippingFrom: st.shipping.freeShippingFrom || 0, domicilio: !!st.shipping.andreaniDomicilio, sucursal: !!st.shipping.andreaniSucursal },
-    tryon: { enabled: S.settings.tryon.enabled, mock: true, hidden: tryonHidden() },
+    tryon: S.settings.tryon.engine === 'fashn' ? { enabled: S.settings.tryon.enabled, engine: 'fashn', mock: true, hidden: tryonHidden() }
+      : { enabled: S.settings.tryon.enabled, engine: 'samadhi', garments: Object.fromEntries(Object.entries(S.garments).filter(([id, g]) => g.status === 'aprobada' && S.products.find((p) => p.id === Number(id))?.visible).map(([id, { status, source, ...g }]) => [id, g])), hidden: [] },
     content: { faq: S.settings.content.faq, terms: S.settings.content.terms, returns: S.settings.content.returns, reviews: S.settings.content.reviewsEnabled },
     payments: { installments: st.payments.installments || 1, transfer: st.payments.transferEnabled ? { discount: st.payments.transferDiscount || 0 } : null },
   };
@@ -485,6 +487,7 @@ function storeRoute(method, path, q, b) {
     if (Date.now() - j.at < 2500) return { status: 'processing' };
     return { status: 'completed', mock: true, log: j.log };
   }
+  if (path === '/api/tryon/log') { const log = { id: S.tryons.length + 1, at: sqlDate(), product_id: Number(b.productId), status: 'propio', ms: 0, added: 0 }; S.tryons.push(log); return { log: log.id }; }
   if (path === '/api/tryon/added') { const t = S.tryons.find((x) => x.id === Number(b.log)); if (t) t.added = 1; return { ok: true }; }
   if (path === '/api/reviews') {
     if (!S.settings.content.reviewsEnabled) return { enabled: false };
@@ -763,21 +766,35 @@ function adminRoute(method, path, q, b, raw) {
   if (path === '/uploads') { if (!raw) fail(400, 'Subí una foto.'); return { url: URL.createObjectURL(raw) }; }
   // Usuarios (solo administración)
   if (path === '/tryon' && method === 'GET') {
-    const ok = (t) => t.status === 'lista' || t.status === 'prueba';
+    const ok = (t) => t.status === 'lista' || t.status === 'prueba' || t.status === 'propio';
     const within = (t, d) => Date.now() - Date.parse(t.at.replace(' ', 'T') + 'Z') < d * 864e5;
     const month = S.tryons.filter((t) => ok(t) && within(t, 30));
     const byP = new Map(); for (const t of month) { const x = byP.get(t.product_id) || { product_id: t.product_id, tries: 0, added: 0 }; x.tries++; x.added += t.added; byP.set(t.product_id, x); }
     const top = [...byP.values()].sort((a, z) => z.tries - a.tries).slice(0, 10).map((x) => { const p = S.products.find((y) => y.id === x.product_id); return { ...x, name: p?.name || '', image: p?.images[0] || '' }; });
     const done = month.filter((t) => t.status === 'lista');
-    return { settings: S.settings.tryon, hidden: tryonHidden(), mock: true, categories: S.categories.filter((c) => c.visible),
+    return { settings: S.settings.tryon, hidden: tryonHidden(), mock: true, garmentsOn: Object.values(S.garments).filter((g) => g.status === 'aprobada').length, categories: S.categories.filter((c) => c.visible),
       stats: { today: S.tryons.filter((t) => ok(t) && within(t, 1)).length, month: month.length, added: month.reduce((a, t) => a + t.added, 0), errors: S.tryons.filter((t) => t.status === 'error' && within(t, 30)).length,
         avgSeconds: done.length ? Math.round(done.reduce((a, t) => a + t.ms, 0) / done.length / 100) / 10 : null, top } };
   }
   if (path === '/tryon' && method === 'PUT') {
     onlyAdmin();
     const t = S.settings.tryon;
+    if (['samadhi', 'fashn'].includes(b.engine)) t.engine = b.engine;
     Object.assign(t, { enabled: !!b.enabled, dailyLimit: Number(b.dailyLimit) || t.dailyLimit, perHour: Number(b.perHour) || t.perHour, mode: b.mode || t.mode, hiddenCategories: Array.isArray(b.hiddenCategories) ? b.hiddenCategories : t.hiddenCategories });
     return { ok: true };
+  }
+  if (path === '/tryon/garments' && method === 'GET') {
+    const cat = new Map(S.categories.map((c) => [c.id, c.name]));
+    return S.products.filter((p) => p.visible).map((p) => { const g = S.garments[p.id]; return { id: p.id, name: p.name, slug: p.slug, cats: p.categories.map((i) => cat.get(i)).filter(Boolean).join(', '), images: p.images.slice(0, 4), url: g?.url || null, kind: g?.kind || null, status: g?.status || null, source: g?.source || null, quality: g?.quality ?? null }; });
+  }
+  if ((m = path.match(/^\/tryon\/garments\/(\d+)$/))) {
+    const id = Number(m[1]);
+    if (method === 'PUT') { const g = S.garments[id]; if (!g) fail(404, 'Esa prenda todavía no está preparada.'); if (b.status) g.status = b.status; if (b.kind) g.kind = b.kind; return { ok: true }; }
+    if (method === 'POST') {
+      if (!/^data:image\//.test(String(b.data || ''))) fail(422, 'Falta la imagen de la prenda.');
+      S.garments[id] = { url: b.data, kind: b.kind, pts: b.pts, w: b.size?.[0], h: b.size?.[1], quality: b.quality, status: b.status === 'oculta' ? 'oculta' : 'aprobada', source: 'panel' };
+      return { url: b.data };
+    }
   }
   if (path === '/content' && method === 'GET') { onlyAdmin(); return { ...S.settings.content, google: { connected: false } }; }
   if (path === '/content' && method === 'PUT') {

@@ -228,3 +228,21 @@ td.r, th.r { text-align: right; }
 .legal-ed { display: grid; gap: 10px; }
 .legal-ed textarea { font-family: ui-monospace, Menlo, monospace; font-size: 12.5px; line-height: 1.55; }
 .legal-ed .btn { justify-self: start; }
+
+/* Probador: prendas */
+.garments { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 12px; }
+.garment { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; display: flex; flex-direction: column; }
+.garment.off { opacity: .55; }
+.g-img { aspect-ratio: 3 / 4; display: grid; place-items: center; background-color: #ececec; background-image: linear-gradient(45deg, #dcdcdc 25%, transparent 25%, transparent 75%, #dcdcdc 75%), linear-gradient(45deg, #dcdcdc 25%, transparent 25%, transparent 75%, #dcdcdc 75%); background-size: 16px 16px; background-position: 0 0, 8px 8px; }
+.g-img img { max-width: 92%; max-height: 92%; object-fit: contain; }
+.g-img.big { aspect-ratio: auto; height: 380px; border-radius: 8px; margin: 10px 0; }
+.g-body { padding: 10px 12px 12px; display: grid; gap: 6px; }
+.g-row { display: flex; gap: 8px; align-items: center; }
+.g-row select { width: auto; flex: 1; }
+.g-modal { position: fixed; inset: 0; background: rgb(0 0 0 / .35); display: grid; place-items: center; z-index: 50; padding: 16px; }
+.g-modal > .card { width: min(640px, 100%); max-height: 92vh; overflow: auto; }
+.g-pick { display: flex; gap: 8px; margin: 10px 0; flex-wrap: wrap; }
+.g-pick button img { width: 84px; height: 112px; object-fit: cover; border-radius: 6px; border: 1px solid var(--line); }
+.radio-card { display: flex; gap: 10px; align-items: flex-start; border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; margin-top: 8px; cursor: pointer; }
+.radio-card:has(input:checked) { border-color: var(--oliva); background: var(--oliva-2); }
+.radio-card small { display: block; color: var(--muted); font-size: 12px; margin-top: 2px; }

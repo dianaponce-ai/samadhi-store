@@ -280,11 +280,19 @@ test('seguir mi pedido, botón de arrepentimiento y contenido', async () => {
   assert.equal(rv.data.connected, false);
 });
 
-test('probador virtual en modo prueba', async () => {
+test('probador: motor propio con prendas preparadas y FASHN en modo prueba', async () => {
   const { data: cat } = await json('/api/catalog');
   assert.equal(cat.tryon.enabled, true);
-  assert.equal(cat.tryon.mock, true);
-  const p = cat.products.find((x) => x.images.length && !x.categories.some((id) => cat.tryon.hidden.includes(id)));
+  assert.equal(cat.tryon.engine, 'samadhi');
+  const ids = Object.keys(cat.tryon.garments);
+  assert.ok(ids.length >= 50, 'vienen prendas preparadas con el catálogo');
+  const g = cat.tryon.garments[ids[0]];
+  assert.ok(['top', 'bottom', 'full'].includes(g.kind) && g.pts.length >= 4 && g.url.startsWith('/probador/'));
+  assert.equal((await fetch(B + g.url)).status, 200);
+  assert.equal((await fetch(B + '/vendor/mediapipe-pose/pose.js')).status, 200);
+  const lg = await json('/api/tryon/log', { method: 'POST', body: { productId: Number(ids[0]) } });
+  assert.ok(lg.data.log);
+  const p = cat.products.find((x) => x.images.length);
   assert.equal((await json('/api/tryon', { method: 'POST', body: { productId: p.id, photo: 'no-es-una-foto' } })).status, 422);
   const photo = 'data:image/jpeg;base64,' + Buffer.alloc(300 * 1024, 7).toString('base64'); // pesa más de 200 kB: prueba el límite propio de esta ruta
   const st = await json('/api/tryon', { method: 'POST', body: { productId: p.id, image: 0, photo } });
@@ -298,6 +306,15 @@ test('probador virtual en modo prueba', async () => {
   const login = await json('/api/admin/login', { method: 'POST', body: { email: 'test@samadhi.local', password: 'clave-de-prueba-123' } });
   const H = { cookie: login.headers.get('set-cookie').split(';')[0], 'x-samadhi-admin': '1' };
   const a = await json('/api/admin/tryon', { headers: H });
-  assert.equal(a.data.stats.month, 1);
+  assert.equal(a.data.stats.month, 2);
   assert.equal(a.data.stats.added, 1);
+  assert.ok(a.data.garmentsOn >= 50);
+  const gl = await json('/api/admin/tryon/garments', { headers: H });
+  const row = gl.data.find((r) => r.url);
+  await json('/api/admin/tryon/garments/' + row.id, { method: 'PUT', headers: H, body: { status: 'oculta' } });
+  assert.ok(!(await json('/api/catalog')).data.tryon.garments[row.id]);
+  const tiny = 'data:image/webp;base64,' + Buffer.from('RIFF0000WEBP').toString('base64');
+  const sv = await json('/api/admin/tryon/garments/' + row.id, { method: 'POST', headers: H, body: { data: tiny, kind: 'top', pts: [{ name: 'shL', x: 1, y: 1 }, { name: 'shR', x: 2, y: 1 }, { name: 'hipL', x: 1, y: 3 }, { name: 'hipR', x: 2, y: 3 }], size: [10, 20], quality: 0.8 } });
+  assert.match(sv.data.url, /^\/uploads\/probador\//);
+  assert.equal((await fetch(B + sv.data.url)).status, 200);
 });

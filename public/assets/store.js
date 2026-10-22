@@ -357,7 +357,7 @@ function renderModal() {
         <div class="qty"><button data-q="-1" aria-label="Menos" ${qty <= 1 ? 'disabled' : ''}>−</button><span>${qty}</span><button data-q="1" aria-label="Más" ${qty >= max ? 'disabled' : ''}>+</button></div>
         <button class="btn solid" id="addBtn" ${ready ? '' : 'disabled'}>${!p.inStock ? 'Agotado' : needsSize ? 'Elegí un talle' : ready ? 'Sumar a la bolsa' : 'Sin stock'}</button>
       </div>
-      ${tryonOk(p) ? `<button class="tryon-cta" type="button" data-tryon><span class="tryon-ic" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3l1.6 4.4L18 9l-4.4 1.6L12 15l-1.6-4.4L6 9l4.4-1.6z"/><path d="M18.5 15l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7z"/></svg></span><span><b>Probátelo con IA</b><small>Subí una foto tuya y mirá cómo te queda</small></span></button>` : ''}
+      ${tryonOk(p) ? `<button class="tryon-cta" type="button" data-tryon><span class="tryon-ic" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3l1.6 4.4L18 9l-4.4 1.6L12 15l-1.6-4.4L6 9l4.4-1.6z"/><path d="M18.5 15l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7z"/></svg></span><span><b>Probátelo</b><small>Subí una foto tuya y mirá cómo te queda</small></span></button>` : ''}
       ${p.desc ? `<p class="desc">${esc(p.desc)}</p>` : ''}
       <div class="pmeta"><span>Envíos con Andreani a todo el país${CAT.shipping.freeShippingFrom ? ` · Sin cargo desde ${fmt(CAT.shipping.freeShippingFrom)}` : ''}</span>${p.ref ? `<span>Art. ${esc(p.ref)}</span>` : ''}</div>
     </div>`;
@@ -771,6 +771,7 @@ let lastFocus = null;
 function openLayer(sel) { lastFocus = document.activeElement; $('#scrim').classList.add('on'); $(sel).classList.add('on'); document.body.style.overflow = 'hidden'; setTimeout(() => $(sel).querySelector('button, input')?.focus({ preventScroll: true }), 50); }
 function closeAll() {
   ['#modal', '#drawer', '#mnav', '#scrim', '#acct', '#track', '#legal', '#tryon'].forEach((s) => $(s).classList.remove('on'));
+  if (typeof stopLive === 'function') stopLive();
   document.body.style.overflow = '';
   if (location.hash.startsWith('#p/')) safeHash('');
   document.title = 'Samadhi Style';
@@ -1066,21 +1067,34 @@ function openLegal(which) {
 }
 
 
-// ── Probador virtual con IA ──────────────────────────────
-// La clienta sube una foto de cuerpo entero y ve la prenda puesta. La foto se achica en el navegador,
-// viaja sólo para generar la imagen y no se guarda en la tienda. Opcionalmente queda en este dispositivo.
+// ── Probador virtual ─────────────────────────────────────
+// Motor propio (por defecto): todo corre en el navegador de la clienta y la foto nunca sale de su dispositivo.
+// Detecta el cuerpo, calza las prendas preparadas del catálogo y deja ajustar tamaño, largo y posición.
+// Motor FASHN (opcional, de pago): la foto viaja al servicio de IA sólo para generar la imagen.
 const TRY_KEY = 'samadhi-probador-foto';
-const tryonOk = (p) => !!(CAT.tryon?.enabled && p && p.images.length && !p.categories.some((id) => (CAT.tryon.hidden || []).includes(id)));
-const tr = { p: null, img: 0, photo: null, base: null, result: null, look: [], status: 'photo', error: '', remember: false, consent: false, picking: false, q: '', log: null, mock: false, cmp: 50 };
+const own = () => CAT.tryon?.engine !== 'fashn';
+const tryonOk = (p) => !!(CAT.tryon?.enabled && p && p.images.length && (own() ? CAT.tryon.garments?.[p.id] : !p.categories.some((id) => (CAT.tryon.hidden || []).includes(id))));
+const tr = { p: null, img: 0, photo: null, base: null, result: null, look: [], status: 'photo', error: '', note: '', remember: false, consent: false, picking: false, q: '', log: null, mock: false, cmp: 50, body: null, bodyImg: null, size: '', live: null };
 try { const saved = localStorage.getItem(TRY_KEY); if (saved) { tr.photo = saved; tr.remember = true; tr.consent = true; } } catch {}
+let ENGINE = null;
+async function engine() {
+  if (ENGINE) return ENGINE;
+  ENGINE = window.__PROBADOR || (await import('/assets/probador-engine.js'));
+  return ENGINE;
+}
+const loadImg = (src) => new Promise((ok, bad) => { const i = new Image(); i.crossOrigin = 'anonymous'; i.onload = () => ok(i); i.onerror = () => bad(new Error('No pudimos cargar la imagen.')); i.src = src; });
 
 function openTryon(p, img = 0) {
   if (!CAT.tryon?.enabled) return;
-  tr.p = p && tryonOk(p) ? p : null; tr.img = img; tr.error = ''; tr.result = null; tr.look = []; tr.base = tr.photo; tr.picking = !tr.p;
+  tr.p = p && tryonOk(p) ? p : null; tr.img = img; tr.error = ''; tr.note = ''; tr.result = null; tr.mock = false; tr.base = tr.photo; tr.picking = !tr.p; tr.size = '';
+  if (!own()) tr.look = [];
   tr.status = tr.photo ? 'ready' : 'photo';
   renderTryon();
   lastFocus = document.activeElement;
   $('#scrim').classList.add('on'); $('#tryon').classList.add('on'); document.body.style.overflow = 'hidden';
+  if (own() && tr.photo && !tr.body) analyzePhoto();
+  else if (own() && tr.p && tr.body && !tr.look.some((x) => x.p.id === tr.p.id)) addToLook(tr.p);
+  else if (own() && tr.look.length) drawLook();
 }
 async function shrinkPhoto(file) {
   if (!/^image\//.test(file.type)) throw new Error('Elegí una foto (JPG o PNG).');
@@ -1094,53 +1108,149 @@ async function shrinkPhoto(file) {
     return c.toDataURL('image/jpeg', 0.88);
   } finally { URL.revokeObjectURL(url); }
 }
+
+// Motor propio: analizar la foto una vez y redibujar el look cada vez que cambia algo.
+async function analyzePhoto() {
+  tr.status = 'analyzing'; tr.error = ''; tr.note = ''; tr.body = null; renderTryon();
+  try {
+    const E = await engine();
+    tr.bodyImg = await loadImg(tr.photo);
+    tr.body = await E.detect(tr.bodyImg, { complexity: 1 });
+    const warn = E.checkBody(tr.body, 'top');
+    if (!tr.body.lm) { tr.error = warn; tr.status = 'ready'; tr.body = null; renderTryon(); return; }
+    tr.note = warn || '';
+    tr.status = 'ready';
+    if (tr.p) await addToLook(tr.p); else renderTryon();
+  } catch (e) { tr.error = e.message || 'No pudimos analizar la foto.'; tr.status = 'ready'; renderTryon(); }
+}
+async function addToLook(p) {
+  const E = await engine();
+  const g = CAT.tryon.garments[p.id];
+  if (!g || !tr.body) return;
+  tr.status = 'working'; renderTryon();
+  try {
+    const image = await loadImg(g.url);
+    const item = { p, kind: g.kind, pts: g.pts, image, adj: { dx: 0, dy: 0, scale: 0, length: 0 } };
+    // Una prenda entera reemplaza a las de arriba y abajo; una de arriba o de abajo reemplaza a la del mismo tipo y a la entera.
+    tr.look = tr.look.filter((x) => x.p.id !== p.id && !(g.kind === 'full' || x.kind === 'full' || x.kind === g.kind));
+    tr.look.push(item);
+    tr.note = E.checkBody(tr.body, g.kind) || '';
+    api('/api/tryon/log', { productId: p.id }).then((r) => { item.log = r.log; }).catch(() => {});
+    drawLook();
+  } catch (e) { tr.error = e.message; }
+  tr.status = 'ready'; tr.picking = false; renderTryon();
+}
+let drawTimer = 0;
+function drawLook(soon = false) {
+  if (!tr.body || !ENGINE) return;
+  const go = () => {
+    const c = document.createElement('canvas');
+    ENGINE.renderLook(c, tr.bodyImg, tr.body, tr.look);
+    tr.result = tr.look.length ? c.toDataURL('image/jpeg', 0.9) : null;
+    if (!soon) tr.cmp = 0;
+    const a = $('#tryon .tr-cmp img.a'); if (a && tr.result) a.src = tr.result; else renderTryon();
+  };
+  clearTimeout(drawTimer);
+  if (soon) drawTimer = setTimeout(go, 60); else go();
+}
+
+// Espejo en vivo con la cámara (motor propio).
+async function startLive() {
+  if (!navigator.mediaDevices?.getUserMedia) { tr.error = 'Tu navegador no permite usar la cámara acá.'; return renderTryon(); }
+  try {
+    const E = await engine();
+    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: { ideal: 720 }, height: { ideal: 1280 } }, audio: false });
+    const video = document.createElement('video'); video.playsInline = true; video.muted = true; video.srcObject = stream; await video.play();
+    tr.live = { stream, video, on: true };
+    renderTryon();
+    const canvas = $('#trLive'); const ctx = canvas.getContext('2d');
+    const loop = async () => {
+      if (!tr.live?.on) return;
+      const body = await E.detect(video, { complexity: 0, video: true, mask: false }).catch(() => null);
+      if (!tr.live?.on) return;
+      canvas.width = video.videoWidth; canvas.height = video.videoHeight;
+      ctx.drawImage(video, 0, 0);
+      if (body?.lm) { const order = { full: 0, bottom: 1, top: 2 }; for (const g of [...tr.look].sort((a, b) => order[a.kind] - order[b.kind])) E.fitGarment(ctx, body, g, { ...g.adj, fast: true }); }
+      requestAnimationFrame(loop);
+    };
+    loop();
+  } catch (e) { tr.error = e.name === 'NotAllowedError' ? 'Necesitamos permiso para usar la cámara.' : 'No pudimos abrir la cámara.'; renderTryon(); }
+}
+function stopLive() { if (tr.live) { tr.live.on = false; tr.live.stream.getTracks().forEach((t) => t.stop()); tr.live = null; } }
+
 const tryCats = () => CAT.products.filter(tryonOk);
 function renderTryon() {
   const p = tr.p;
-  const stage = tr.result || tr.mock
-    ? (tr.mock ? `<div class="tr-mock"><img src="${esc(tr.base)}" alt="Tu foto"><div class="tr-mock-g">${imgTag(p, p.images[tr.img], { sizes: '200px' })}</div>
-        <div class="tr-mock-note"><b>Modo prueba</b> Con el probador conectado, acá ves tu foto con ${esc(p.name)} puesta, generada con IA en unos 10 segundos.</div></div>`
-      : `<div class="tr-cmp" style="--x:${tr.cmp}%"><img class="a" src="${esc(tr.result)}" alt="Vos con ${esc(p.name)}"><img class="b" src="${esc(tr.base)}" alt="Tu foto original"><span class="tr-cmp-line" aria-hidden="true"></span>
-        <input type="range" min="0" max="100" value="${tr.cmp}" data-cmp aria-label="Comparar con tu foto original"><span class="tr-tag l">Tu foto</span><span class="tr-tag r">Con ${esc(p.name)}</span></div>`)
-    : tr.base
-      ? `<div class="tr-photo ${tr.status === 'working' ? 'busy' : ''}"><img src="${esc(tr.base)}" alt="Tu foto">${tr.status === 'working' ? '<div class="tr-scan" aria-hidden="true"></div><div class="tr-wait" role="status">Probándote la prenda…<small>Tarda unos segundos</small></div>' : ''}</div>`
-      : `<label class="tr-drop" for="trFile"><svg viewBox="0 0 48 48" aria-hidden="true"><circle cx="24" cy="11" r="5"/><path d="M24 16v14M16 22l8-4 8 4M19 46l5-16 5 16"/></svg>
+  const cur = tr.look.at(-1);
+  const busy = tr.status === 'analyzing' || tr.status === 'working';
+  const busyTxt = tr.status === 'analyzing' ? (ENGINE ? 'Mirando tu foto…' : 'Preparando el probador…') : own() ? 'Calzando la prenda…' : 'Probándote la prenda…';
+  let stage;
+  if (tr.live) stage = `<div class="tr-photo"><canvas id="trLive" class="tr-live" aria-label="Espejo en vivo"></canvas><button class="btn sm tr-live-stop" type="button" data-live-stop>Volver a mi foto</button></div>`;
+  else if (tr.mock) stage = `<div class="tr-mock"><img src="${esc(tr.base)}" alt="Tu foto"><div class="tr-mock-g">${imgTag(p, p.images[tr.img], { sizes: '200px' })}</div>
+        <div class="tr-mock-note"><b>Modo prueba</b> Con el servicio conectado, acá ves tu foto con ${esc(p.name)} puesta, generada con IA.</div></div>`;
+  else if (tr.result) stage = `<div class="tr-cmp" style="--x:${tr.cmp}%"><img class="a" src="${esc(tr.result)}" alt="Vos con ${esc((own() ? tr.look.map((x) => x.p.name).join(' y ') : p.name))}"><img class="b" src="${esc(tr.base)}" alt="Tu foto original"><span class="tr-cmp-line" aria-hidden="true"></span>
+        <input type="range" min="0" max="100" value="${tr.cmp}" data-cmp aria-label="Comparar con tu foto original"><span class="tr-tag l">Tu foto</span><span class="tr-tag r">${own() ? 'Probador' : 'Con ' + esc(p.name)}</span></div>`;
+  else if (tr.base) stage = `<div class="tr-photo ${busy ? 'busy' : ''}"><img src="${esc(tr.base)}" alt="Tu foto">${busy ? `<div class="tr-scan" aria-hidden="true"></div><div class="tr-wait" role="status">${busyTxt}<small>${tr.status === 'analyzing' && !ENGINE ? 'Sólo la primera vez tarda un poco más' : 'Unos segundos'}</small></div>` : ''}</div>`;
+  else stage = `<label class="tr-drop" for="trFile"><svg viewBox="0 0 48 48" aria-hidden="true"><circle cx="24" cy="11" r="5"/><path d="M24 16v14M16 22l8-4 8 4M19 46l5-16 5 16"/></svg>
           <b>Subí una foto tuya</b><span>De cuerpo entero, de frente y con buena luz</span><span class="btn sm">Elegir foto</span></label>`;
-  const tips = `<ul class="tr-tips"><li>Cuerpo entero, de frente, brazos al costado</li><li>Buena luz y fondo simple</li><li>Ropa ajustada, sin abrigo ni cartera</li><li>Sólo vos en la foto</li></ul>`;
-  const picker = `<div class="tr-pick"><div class="fl"><label for="trQ">Elegí una prenda</label><input id="trQ" value="${esc(tr.q)}" placeholder="Buscar: vestido, jean, blusa…" autocomplete="off"></div>
-      <div class="tr-grid">${tryCats().filter((x) => !tr.q || norm(x.name).includes(norm(tr.q))).slice(0, 36).map((x) => `<button type="button" data-pick="${x.id}" class="${p?.id === x.id ? 'on' : ''}">${imgTag(x, x.images[0], { sizes: '120px' })}<span>${esc(x.name)}</span></button>`).join('')}</div></div>`;
+  const tips = `<ul class="tr-tips"><li>Cuerpo entero, de frente, brazos al costado</li><li>Buena luz y fondo liso</li><li>Ropa ajustada y de un color</li><li>Sólo vos en la foto</li></ul>`;
+  const picker = `<div class="tr-pick"><div class="fl"><label for="trQ">${tr.look.length ? 'Sumá otra prenda al look' : 'Elegí una prenda'}</label><input id="trQ" value="${esc(tr.q)}" placeholder="Buscar: vestido, jean, blusa…" autocomplete="off"></div>
+      <div class="tr-grid">${tryCats().filter((x) => !tr.q || norm(x.name).includes(norm(tr.q))).slice(0, 48).map((x) => `<button type="button" data-pick="${x.id}" class="${p?.id === x.id ? 'on' : ''}">${imgTag(x, x.images[0], { sizes: '120px' })}<span>${esc(x.name)}</span></button>`).join('')}</div>
+      ${tr.look.length ? '<button class="link-btn" type="button" data-unpick>Volver al look</button>' : ''}</div>`;
   const garment = p ? `<div class="tr-garment">
-      <div class="tr-g-imgs">${p.images.slice(0, 5).map((u, i) => `<button type="button" data-gimg="${i}" class="${i === tr.img ? 'on' : ''}" aria-label="Usar la foto ${i + 1}">${imgTag(p, u, { sizes: '72px' })}</button>`).join('')}</div>
+      <div class="tr-g-imgs">${p.images.slice(0, own() ? 1 : 5).map((u, i) => `<button type="button" data-gimg="${i}" class="${i === tr.img ? 'on' : ''}" aria-label="Usar la foto ${i + 1}">${imgTag(p, u, { sizes: '72px' })}</button>`).join('')}</div>
       <div><div class="caps" style="color:var(--suave)">Prenda</div><div class="tr-g-name">${esc(p.name)}</div><div class="money">${fmt(nowPrice(p))}</div>
       <button class="link-btn" type="button" data-repick>Cambiar de prenda</button></div></div>` : '';
+  const privacy = own() ? 'Tu foto no sale de tu celular: el probador funciona en tu navegador y no la guardamos.' : 'Tu foto se usa sólo para generar la imagen: no la guardamos y el servicio de IA la borra al terminar.';
+  const sizes = () => {
+    const v = p.variants.filter(avail);
+    return `${p.sizes.length ? `<div class="opt-label caps">Talle</div><div class="sizes">${p.sizes.map((sz) => { const ok = v.some((x) => x.size === sz); return `<button class="sz ${tr.size === sz ? 'on' : ''} ${ok ? '' : 'no'}" data-tsize="${esc(sz)}" ${ok ? '' : 'aria-disabled="true"'}>${esc(sz)}</button>`; }).join('')}</div>` : ''}
+      <button class="btn solid wide" type="button" data-tadd>${p.sizes.length > 1 && !tr.size ? 'Elegí un talle' : 'Sumar a la bolsa'}</button>`;
+  };
   let side = '';
   if (tr.picking || !p) side = picker;
   else if (!tr.base) {
     side = `${garment}<div class="tr-step"><div class="caps">1 · Tu foto</div>${tips}
       <label class="tr-check"><input type="checkbox" data-consent ${tr.consent ? 'checked' : ''}> <span>Es una foto mía (o tengo permiso de la persona) y soy mayor de 18 años.</span></label>
       <label class="btn solid wide ${tr.consent ? '' : 'off'}" for="trFile">Subir foto</label>
-      <p class="note">Tu foto se usa sólo para generar la imagen: no la guardamos y el servicio de IA la borra al terminar.</p></div>`;
+      ${own() ? `<button class="btn wide ${tr.consent ? '' : 'off'}" type="button" data-live>Usar la cámara (espejo en vivo)</button>` : ''}
+      <p class="note">${privacy}</p></div>`;
+  } else if (own()) {
+    const a = cur?.adj;
+    side = `${garment}<div class="tr-step">
+      ${tr.note ? `<p class="note tr-warn">${esc(tr.note)}</p>` : ''}
+      ${tr.look.length ? `<div class="tr-look"><span class="caps">Tu look</span>${tr.look.map((x) => `<span class="tr-chip">${esc(x.p.name)}<button type="button" data-unlook="${x.p.id}" aria-label="Sacar ${esc(x.p.name)}">×</button></span>`).join('')}</div>` : ''}
+      ${!tr.look.some((x) => x.p.id === p.id) ? `<button class="btn solid wide" type="button" data-go-try ${busy || !tr.body ? 'disabled' : ''}>${busy ? busyTxt : 'Probármelo'}</button>` : ''}
+      ${cur && !tr.live ? `<details class="tr-adj" ${tr.adjOpen ? 'open' : ''}><summary>Ajustar ${esc(cur.p.name)}</summary>
+        <label class="tr-range"><span>Tamaño</span><input type="range" min="-20" max="20" value="${Math.round(a.scale * 100)}" data-adj="scale"></label>
+        <label class="tr-range"><span>Largo</span><input type="range" min="-25" max="30" value="${Math.round(a.length * 100)}" data-adj="length"></label>
+        <div class="tr-nudge" role="group" aria-label="Mover la prenda"><button type="button" data-nudge="0,-1" aria-label="Subir">↑</button><button type="button" data-nudge="-1,0" aria-label="Izquierda">←</button><button type="button" data-nudge="1,0" aria-label="Derecha">→</button><button type="button" data-nudge="0,1" aria-label="Bajar">↓</button><button type="button" data-reset class="link-btn">Volver a como estaba</button></div>
+      </details>` : ''}
+      ${tr.look.some((x) => x.p.id === p.id) ? sizes() : ''}
+      <div class="tr-row">${tr.look.length ? '<button class="btn sm" type="button" data-more>Sumar otra prenda</button>' : ''}${tr.live ? '' : `<button class="btn sm" type="button" data-live ${tr.look.length ? '' : 'disabled'}>Espejo con la cámara</button>`}</div>
+      <p class="note">Es una simulación: muestra cómo combina y el largo aproximado. El calce real depende del talle; si dudás, escribinos.</p>
+      <label class="tr-check"><input type="checkbox" data-remember ${tr.remember ? 'checked' : ''}> <span>Guardar mi foto en este dispositivo</span></label>
+      <div class="tr-row"><label class="link-btn" for="trFile">Usar otra foto</label>${tr.photo ? '<button class="link-btn" type="button" data-forget>Borrar mi foto</button>' : ''}${tr.result ? `<a class="link-btn" href="${esc(tr.result)}" download="samadhi-probador.jpg">Descargar</a>` : ''}</div></div>`;
   } else if (!tr.result && !tr.mock) {
     side = `${garment}<div class="tr-step">${tr.look.length ? `<div class="tr-look">Tu look: ${tr.look.map((x) => esc(x.name)).join(' + ')}</div>` : ''}
-      <button class="btn solid wide" type="button" data-go-try ${tr.status === 'working' ? 'disabled' : ''}>${tr.status === 'working' ? 'Generando…' : 'Probármelo'}</button>
+      <button class="btn solid wide" type="button" data-go-try ${busy ? 'disabled' : ''}>${busy ? 'Generando…' : 'Probármelo'}</button>
       <label class="tr-check"><input type="checkbox" data-remember ${tr.remember ? 'checked' : ''}> <span>Guardar mi foto en este dispositivo para probar otras prendas</span></label>
       <div class="tr-row"><label class="link-btn" for="trFile">Usar otra foto</label>${tr.photo ? '<button class="link-btn" type="button" data-forget>Borrar mi foto</button>' : ''}</div></div>`;
   } else {
-    const v = p.variants.filter(avail);
     side = `${garment}<div class="tr-step">
       <p class="note">${tr.mock ? '' : 'Imagen generada con IA: es una aproximación. El calce real depende del talle; si dudás, escribinos.'}</p>
-      ${p.sizes.length ? `<div class="opt-label caps">Talle</div><div class="sizes">${p.sizes.map((sz) => { const ok = v.some((x) => x.size === sz); return `<button class="sz ${tr.size === sz ? 'on' : ''} ${ok ? '' : 'no'}" data-tsize="${esc(sz)}" ${ok ? '' : 'aria-disabled="true"'}>${esc(sz)}</button>`; }).join('')}</div>` : ''}
-      <button class="btn solid wide" type="button" data-tadd>${p.sizes.length > 1 && !tr.size ? 'Elegí un talle' : 'Sumar a la bolsa'}</button>
+      ${sizes()}
       <div class="tr-row"><button class="btn sm" type="button" data-more>Sumar otra prenda al look</button><button class="btn sm" type="button" data-again>Probar otra prenda</button></div>
       ${tr.result ? `<a class="link-btn" href="${esc(tr.result)}" download="samadhi-probador.jpg">Descargar la imagen</a>` : ''}</div>`;
   }
-  $('#tryon').innerHTML = `<div class="tr-head"><div><div class="caps">Probador virtual</div><h3>Probátelo con IA</h3></div>
+  $('#tryon').innerHTML = `<div class="tr-head"><div><div class="caps">Probador virtual</div><h3>Probátelo</h3></div>
       <button class="close" data-tclose aria-label="Cerrar"><svg viewBox="0 0 16 16"><path d="M2 2l12 12M14 2L2 14"/></svg></button></div>
     <div class="tr-body"><div class="tr-stage">${stage}</div><div class="tr-side">${tr.error ? `<div class="alert" role="alert">${esc(tr.error)}</div>` : ''}${side}</div></div>
     <input type="file" id="trFile" accept="image/*" hidden>`;
 }
-const norm = (x) => String(x || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+const norm = (x) => String(x || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 async function runTryon() {
+  if (own()) return addToLook(tr.p);
   tr.status = 'working'; tr.error = ''; renderTryon();
   try {
     const st = await api('/api/tryon', { productId: tr.p.id, image: tr.img, photo: tr.base });
@@ -1159,11 +1269,22 @@ function bindTryon() {
     const t = e.target;
     if (t.closest('[data-tclose]')) return closeAll();
     const pk = t.closest('[data-pick]');
-    if (pk) { tr.p = CAT.products.find((x) => x.id === Number(pk.dataset.pick)); tr.img = 0; tr.picking = false; tr.result = null; tr.mock = false; tr.size = ''; tr.error = ''; return renderTryon(); }
-    if (t.closest('[data-repick]')) { tr.picking = true; tr.result = null; tr.mock = false; return renderTryon(); }
-    const gi = t.closest('[data-gimg]'); if (gi) { tr.img = Number(gi.dataset.gimg); tr.result = null; tr.mock = false; return renderTryon(); }
+    if (pk) {
+      tr.p = CAT.products.find((x) => x.id === Number(pk.dataset.pick)); tr.img = 0; tr.picking = false; tr.size = ''; tr.error = '';
+      if (own()) { if (tr.body) return addToLook(tr.p); return renderTryon(); }
+      tr.result = null; tr.mock = false; return renderTryon();
+    }
+    if (t.closest('[data-unpick]')) { tr.picking = false; tr.p = tr.look.at(-1)?.p || tr.p; return renderTryon(); }
+    if (t.closest('[data-repick]')) { tr.picking = true; if (!own()) { tr.result = null; tr.mock = false; } return renderTryon(); }
+    const ul = t.closest('[data-unlook]'); if (ul) { tr.look = tr.look.filter((x) => x.p.id !== Number(ul.dataset.unlook)); if (!tr.look.length) tr.result = null; drawLook(); return renderTryon(); }
+    const gi = t.closest('[data-gimg]'); if (gi) { tr.img = Number(gi.dataset.gimg); if (!own()) { tr.result = null; tr.mock = false; } return renderTryon(); }
     if (t.closest('[data-go-try]')) return runTryon();
-    if (t.closest('[data-forget]')) { try { localStorage.removeItem(TRY_KEY); } catch {} tr.photo = null; tr.base = null; tr.remember = false; tr.result = null; tr.mock = false; tr.look = []; toast('Borramos tu foto'); return renderTryon(); }
+    if (t.closest('[data-live-stop]')) { stopLive(); return renderTryon(); }
+    if (t.closest('[data-live]') && !t.closest('[data-live]').disabled) { if (t.closest('.off')) { tr.error = 'Confirmá que sos mayor de 18 para seguir.'; return renderTryon(); } tr.error = ''; if (!tr.look.length && tr.p) { engine().then(() => loadImg(CAT.tryon.garments[tr.p.id].url)).then((image) => { const g = CAT.tryon.garments[tr.p.id]; tr.look = [{ p: tr.p, kind: g.kind, pts: g.pts, image, adj: { dx: 0, dy: 0, scale: 0, length: 0 } }]; startLive(); }); return; } return startLive(); }
+    const nd = t.closest('[data-nudge]');
+    if (nd) { const cur = tr.look.at(-1); const [x, y] = nd.dataset.nudge.split(',').map(Number); const step = (tr.body?.W || 600) * 0.012; cur.adj.dx += x * step; cur.adj.dy += y * step; tr.adjOpen = true; return drawLook(true); }
+    if (t.closest('[data-reset]')) { const cur = tr.look.at(-1); cur.adj = { dx: 0, dy: 0, scale: 0, length: 0 }; tr.adjOpen = true; drawLook(); return renderTryon(); }
+    if (t.closest('[data-forget]')) { try { localStorage.removeItem(TRY_KEY); } catch {} tr.photo = null; tr.base = null; tr.remember = false; tr.result = null; tr.mock = false; tr.look = []; tr.body = null; toast('Borramos tu foto'); return renderTryon(); }
     const ts = t.closest('[data-tsize]'); if (ts && !ts.classList.contains('no')) { tr.size = ts.dataset.tsize; return renderTryon(); }
     if (t.closest('[data-tadd]')) {
       const p = tr.p; const size = p.sizes.length === 1 ? p.sizes[0] : tr.size;
@@ -1171,25 +1292,32 @@ function bindTryon() {
       const v = p.variants.find((x) => avail(x) && (!p.sizes.length || x.size === size));
       if (!v) { toast('Ese talle está agotado'); return; }
       addToCart(v.id, 1);
-      if (tr.log) api('/api/tryon/added', { log: tr.log }).catch(() => {});
+      const log = own() ? tr.look.find((x) => x.p.id === p.id)?.log : tr.log;
+      if (log) api('/api/tryon/added', { log }).catch(() => {});
       toast('Sumado a tu bolsa'); return;
     }
-    if (t.closest('[data-more]')) { if (tr.result) tr.base = tr.result; tr.result = null; tr.mock = false; tr.picking = true; tr.size = ''; return renderTryon(); }
+    if (t.closest('[data-more]')) { if (!own()) { if (tr.result) tr.base = tr.result; tr.result = null; tr.mock = false; } tr.picking = true; tr.size = ''; return renderTryon(); }
     if (t.closest('[data-again]')) { tr.base = tr.photo; tr.look = []; tr.result = null; tr.mock = false; tr.picking = true; tr.size = ''; return renderTryon(); }
     if (t.closest('label.off')) { e.preventDefault(); tr.error = 'Confirmá que la foto es tuya para seguir.'; renderTryon(); }
   });
+  el.addEventListener('toggle', (e) => { if (e.target.matches?.('.tr-adj')) tr.adjOpen = e.target.open; }, true);
   el.addEventListener('change', async (e) => {
     const t = e.target;
     if (t.matches('[data-consent]')) { tr.consent = t.checked; tr.error = ''; return renderTryon(); }
     if (t.matches('[data-remember]')) { tr.remember = t.checked; try { if (t.checked && tr.photo) localStorage.setItem(TRY_KEY, tr.photo); else localStorage.removeItem(TRY_KEY); } catch {} return; }
     if (t.id === 'trFile' && t.files[0]) {
-      try { tr.photo = await shrinkPhoto(t.files[0]); tr.base = tr.photo; tr.result = null; tr.mock = false; tr.look = []; tr.error = ''; tr.consent = true; tr.status = 'ready'; if (tr.remember) try { localStorage.setItem(TRY_KEY, tr.photo); } catch {} }
-      catch (err) { tr.error = err.message; }
+      try {
+        tr.photo = await shrinkPhoto(t.files[0]); tr.base = tr.photo; tr.result = null; tr.mock = false; tr.error = ''; tr.consent = true; tr.status = 'ready'; tr.body = null;
+        if (tr.remember) try { localStorage.setItem(TRY_KEY, tr.photo); } catch {}
+        stopLive();
+        if (own()) { const keep = tr.look.map((x) => x.p); tr.look = []; renderTryon(); await analyzePhoto(); for (const p of keep) if (p.id !== tr.p?.id) await addToLook(p); return; }
+      } catch (err) { tr.error = err.message; }
       renderTryon();
     }
   });
   el.addEventListener('input', (e) => {
     if (e.target.matches('[data-cmp]')) { tr.cmp = Number(e.target.value); el.querySelector('.tr-cmp').style.setProperty('--x', tr.cmp + '%'); }
+    if (e.target.matches('[data-adj]')) { const cur = tr.look.at(-1); cur.adj[e.target.dataset.adj] = Number(e.target.value) / 100; tr.adjOpen = true; drawLook(true); }
     if (e.target.id === 'trQ') { tr.q = e.target.value; const pos = e.target.selectionStart; renderTryon(); const q = $('#trQ'); q.focus(); q.setSelectionRange(pos, pos); }
   });
   document.addEventListener('click', (e) => { if (e.target.closest('[data-tryon-open]')) { closeAll(); openTryon(null); } });

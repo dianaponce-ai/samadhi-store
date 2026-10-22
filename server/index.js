@@ -25,6 +25,7 @@ app.use((req, res, next) => {
 
 app.use('/api/webhooks', express.json({ limit: '200kb' }), webhooks);
 app.use('/api/integrations/lince', express.json({ limit: '25mb' }), linceAgent);
+app.post('/api/admin/tryon/garments/:id', express.json({ limit: '4mb' }));
 app.use('/api/admin', express.json({ limit: '2mb' }), admin);
 app.use('/api/auth', express.json({ limit: '50kb' }), auth);
 app.use('/api/account', express.json({ limit: '50kb' }), account);
@@ -62,6 +63,7 @@ app.use((err, req, res, next) => {
   }
 }
 { const { seedHeroVideo } = await import('./lib/importer.js'); seedHeroVideo(); }
+{ const { seedGarments } = await import('./lib/probador.js'); seedGarments(); }
 ensureFirstAdmin();
 startJobs();
 startLince();

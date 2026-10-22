@@ -29,7 +29,7 @@ Tienda propia para **samadhistyle.com.ar**: vidriera con la identidad de Samadhi
 - 20 emails automáticos: bienvenida, contraseña, pedido recibido, datos de transferencia, pago acreditado o rechazado, preparación, envío con seguimiento, listo para retirar, entregado, cancelado, devolución y avisos al equipo (ver **Emails**).
 - “Tenés un carrito esperándote”: 1 hora después de dejar la bolsa y un último aviso a las 48 horas, con el enlace que arma la bolsa tal como estaba.
 - Stock sincronizado con Lince / Dragonfish (ver **Conectar Lince**).
-- Probador virtual con IA: la clienta sube una foto y ve la prenda puesta (ver **Probador virtual**).
+- Probador virtual propio: la clienta sube una foto (o usa la cámara) y ve la prenda puesta, sin que la foto salga de su celular (ver **Probador virtual**).
 - Seguir mi pedido (número + email), reseñas de Google, preguntas frecuentes en la home, términos y condiciones, política de cambios y Botón de arrepentimiento.
 - Estadísticas con filtro de fecha: ventas, ticket promedio, clientas nuevas, lo más vendido, categorías, medios de pago, envíos, provincias y cupones.
 
@@ -129,14 +129,24 @@ El local manda: la tienda toma stock (y si querés, precios) de Dragonfish y lo 
 
 Sin claves queda en modo prueba: “Sincronizar ahora” simula una lectura con el stock actual.
 
-## Probador virtual (IA)
+## Probador virtual
 
-En cada prenda aparece **Probátelo con IA** y en el menú, **Probador**. La clienta sube una foto de cuerpo entero, elige la prenda y en unos 10 segundos ve la imagen con la prenda puesta, con un control para comparar con su foto original. Puede sumar otra prenda al mismo look (por ejemplo, blusa + jean) y pasar directo a la bolsa.
+En cada prenda aparece **Probátelo** y en el menú, **Probador**. Hay dos motores; se elige en Panel → Probador → Ajustes.
 
-- Usa [FASHN](https://fashn.ai) (modelo tryon-v1.6). Creá una cuenta, cargá créditos (1 crédito por imagen) y poné la clave en `FASHN_API_KEY`.
-- Privacidad: la foto se achica en el celular, viaja sólo para generar la imagen y no se guarda en la tienda; FASHN borra las copias al terminar y no las usa para entrenar. La clienta confirma que la foto es suya y que es mayor de 18. Puede guardarla en su dispositivo para probar otras prendas, y borrarla cuando quiera.
-- Panel → **Probador IA**: uso por día, lo más probado, cuántas pruebas terminaron en la bolsa, límite diario (para controlar el gasto), límite por persona, calidad y categorías sin probador (accesorios y calzado vienen excluidos).
-- Sin clave queda en modo prueba: muestra el recorrido completo sin generar la imagen y en la tienda publicada no aparece.
+### Motor Samadhi (propio, el que viene activado)
+Funciona entero en el navegador de la clienta: **la foto nunca sale de su celular**, no hay costo por prueba ni servicios externos.
+
+1. **Prendas preparadas.** Cada prenda se recorta de la foto del producto (la modelo con la prenda puesta): se detecta el cuerpo, se queda con la zona de la prenda según su tipo (arriba, abajo o entera) y saca cabeza, manos, pelo y piel. Se guarda el recorte con transparencia y los puntos del cuerpo de la modelo (hombros, codos, cadera, rodillas, tobillos).
+2. **La clienta sube su foto** de cuerpo entero (o usa la cámara como espejo en vivo). Se detectan sus puntos del cuerpo.
+3. **La prenda se calza** deformándola con una malla (thin-plate spline) que lleva los puntos de la modelo a los de la clienta, con sombra y con la cara y las manos por delante.
+4. Puede **ajustar** tamaño, largo y posición, **armar un look** (por ejemplo, blusa + jean: una prenda entera reemplaza a las de arriba y abajo), comparar con su foto original y pasar directo a la bolsa con el talle.
+
+Usa MediaPipe Pose (Google, Apache-2.0), servido desde la tienda en `public/vendor/mediapipe-pose`. El catálogo viene con 159 prendas recortadas en `public/probador` (85 revisadas y visibles). En **Panel → Probador → Prendas** ves cada recorte, lo ocultás o mostrás, corregís el tipo, lo rehacés eligiendo otra foto o preparás de una vez las prendas nuevas (el recorte se hace en el navegador de quien administra y se guarda en la tienda). Accesorios, calzado y fotos sin modelo no se pueden probar.
+
+Es una simulación 2D: muestra bien combinaciones, colores y largos; el calce fino depende del talle. Funciona mejor con fotos de frente, buena luz, fondo liso y ropa ajustada.
+
+### Motor FASHN (opcional, IA generativa)
+Imagen fotorrealista en unos 8 segundos, 1 crédito por prueba. Creá una cuenta en [FASHN](https://fashn.ai), cargá créditos y poné la clave en `FASHN_API_KEY`. La foto viaja al servicio sólo para generar la imagen; FASHN la borra al terminar y no la usa para entrenar. Hay límite diario y por persona para controlar el gasto.
 
 ## Seguir mi pedido, reseñas y textos legales
 
@@ -153,7 +163,7 @@ Mientras sigas cargando productos en Tiendanube, exportá el CSV (*Productos →
 
 ```
 server/            API, base de datos e integraciones
-  integrations/    mercadopago.js · andreani.js · dragonfish.js (Lince) · fashn.js (probador)
+  integrations/    mercadopago.js · andreani.js · dragonfish.js (Lince) · fashn.js (probador FASHN)
   routes/          store.js (tienda) · admin.js (panel) · webhooks.js
 public/            vidriera (index.html, pedido.html)
 admin/             panel de administración

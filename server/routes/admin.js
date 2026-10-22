@@ -1,4 +1,5 @@
-import { Router, raw } from 'express';
+import { Router, raw, json as expressJson } from 'express';
+const express_json_big = expressJson({ limit: '4mb' });
 import { writeFileSync, mkdirSync } from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
@@ -15,6 +16,7 @@ import * as lince from '../integrations/dragonfish.js';
 import { computeStats, resolveRange } from '../lib/stats-core.js';
 import * as content from '../lib/content.js';
 import * as tryon from '../integrations/fashn.js';
+import * as probador from '../lib/probador.js';
 
 export const admin = Router();
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
@@ -523,7 +525,7 @@ admin.get('/withdrawals', (req, res) => res.json(content.listWithdrawals()));
 admin.put('/withdrawals/:id', (req, res) => { content.setWithdrawalStatus(int(req.params.id), req.body?.status); res.json({ ok: true }); });
 
 // ── Probador virtual ──
-admin.get('/tryon', (req, res) => res.json({ settings: tryon.tryonSettings(), hidden: tryon.hiddenCategories(), mock: tryon.tryonMock(), stats: tryon.tryonStats(),
+admin.get('/tryon', (req, res) => res.json({ settings: tryon.tryonSettings(), hidden: tryon.hiddenCategories(), mock: tryon.tryonMock(), stats: tryon.tryonStats(), garmentsOn: get("SELECT COUNT(*) n FROM tryon_garments WHERE status = 'aprobada'").n,
   categories: all('SELECT id, name FROM categories WHERE visible = 1 ORDER BY position, name') }));
 admin.put('/tryon', onlyAdmin, (req, res) => {
   const b = req.body || {}, cur = tryon.tryonSettings();
@@ -532,8 +534,24 @@ admin.put('/tryon', onlyAdmin, (req, res) => {
     dailyLimit: b.dailyLimit === undefined ? cur.dailyLimit : Math.min(5000, Math.max(1, int(b.dailyLimit, cur.dailyLimit))),
     perHour: b.perHour === undefined ? cur.perHour : Math.min(100, Math.max(1, int(b.perHour, cur.perHour))),
     mode: ['performance', 'balanced', 'quality'].includes(b.mode) ? b.mode : cur.mode,
+    engine: ['samadhi', 'fashn'].includes(b.engine) ? b.engine : cur.engine,
     hiddenCategories: Array.isArray(b.hiddenCategories) ? b.hiddenCategories.map(Number) : cur.hiddenCategories,
   });
   invalidateCatalog();
   res.json({ ok: true });
 });
+
+// Prendas del probador propio.
+admin.get('/tryon/garments', (req, res) => res.json(probador.adminGarments()));
+admin.put('/tryon/garments/:id', (req, res) => { probador.setGarment(int(req.params.id), req.body || {}); invalidateCatalog(); res.json({ ok: true }); });
+admin.post('/tryon/garments/:id', express_json_big, (req, res) => { const r = probador.saveGarment(int(req.params.id), req.body || {}); invalidateCatalog(); res.json(r); });
+// Las fotos de Tiendanube no permiten leer sus píxeles desde otro dominio: el panel las pide a través de la tienda.
+admin.get('/img-proxy', wrap(async (req, res) => {
+  const u = String(req.query.u || '');
+  if (!/^https:\/\/acdn(-us)?\.mitiendanube\.com\//.test(u)) throw new HttpError(400, 'Sólo fotos del catálogo.');
+  const r = await fetch(u, { signal: AbortSignal.timeout(15000) });
+  if (!r.ok) throw new HttpError(502, 'No pudimos traer la foto.');
+  res.set('Content-Type', r.headers.get('content-type') || 'image/webp');
+  res.set('Cache-Control', 'private, max-age=3600');
+  res.send(Buffer.from(await r.arrayBuffer()));
+}));
