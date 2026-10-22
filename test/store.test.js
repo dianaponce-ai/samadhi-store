@@ -25,7 +25,7 @@ const json = async (p, opts = {}) => { const r = await fetch(B + p, { ...opts, h
 
 test('el catálogo trae los productos visibles con fotos', async () => {
   const { data } = await json('/api/catalog');
-  assert.equal(data.products.length, 201);
+  assert.equal(data.products.length, 202); // 201 de Tiendanube + el blazer de prueba del probador
   assert.ok(data.products.filter((p) => p.images.length).length >= 199);
   assert.ok(data.banners.length >= 3);
 });
