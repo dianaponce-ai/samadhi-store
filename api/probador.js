@@ -34,6 +34,6 @@ export default async function handler(req, res) {
     return res.status(200).json(out);
   } catch (e) {
     console.error('[probador]', e.code, e.detail || e.message);
-    return res.status(e.code === 'sin-clave' ? 503 : e.code === 'bloqueada' || e.code === 'sin-imagen' ? 422 : 502).json({ error: e.message, code: e.code });
+    return res.status(e.code === 'sin-clave' ? 503 : e.code === 'bloqueada' || e.code === 'sin-imagen' ? 422 : 502).json({ error: e.message, code: e.code, detail: e.detail || '' });
   }
 }

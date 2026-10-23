@@ -40,16 +40,24 @@ export async function geminiTryOn({ apiKey, model = GEMINI_DEFAULT_MODEL, person
     contents: [{ role: 'user', parts: [{ inlineData: p }, { inlineData: garment }, { text: buildPrompt({ kind, name, flat }) }] }],
     generationConfig: { responseModalities: ['IMAGE'], ...(personSize ? { imageConfig: { aspectRatio: closestRatio(personSize[0], personSize[1]) } } : {}) },
   };
-  let r;
+  const call = (m) => fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(m)}:generateContent`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey }, body: JSON.stringify(body), signal: AbortSignal.timeout(timeoutMs),
+  });
+  let r, d = {};
   try {
-    r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey }, body: JSON.stringify(body), signal: AbortSignal.timeout(timeoutMs),
-    });
+    r = await call(model);
+    d = await r.json().catch(() => ({}));
+    // Si el modelo ya no existe (Google los renueva), busca el modelo de imagen disponible para esta clave y reintenta.
+    if (r.status === 404) {
+      const alt = await pickImageModel(apiKey);
+      if (alt && alt !== model) { r = await call(alt); d = await r.json().catch(() => ({})); }
+    }
   } catch (err) { const e = new Error('No pudimos conectar con el probador. Probá de nuevo en un momento.'); e.code = 'servicio'; e.detail = err.message; throw e; }
-  const d = await r.json().catch(() => ({}));
   if (!r.ok) {
-    const e = new Error(r.status === 429 ? 'El probador está con mucha demanda. Probá en unos segundos.' : 'El probador no está disponible ahora. Probá más tarde.');
-    e.code = r.status === 400 && /api key/i.test(d.error?.message || '') ? 'sin-clave' : 'servicio'; e.status = r.status; e.detail = d.error?.message; throw e;
+    const msg = d.error?.message || '';
+    const keyProblem = r.status === 401 || r.status === 403 || /api key|API_KEY|permission|billing/i.test(msg);
+    const e = new Error(r.status === 429 ? 'El probador está con mucha demanda. Probá en unos segundos.' : keyProblem ? 'La clave de Gemini no es válida o no tiene permiso para generar imágenes.' : 'El probador no está disponible ahora. Probá más tarde.');
+    e.code = keyProblem ? 'clave' : 'servicio'; e.status = r.status; e.detail = `${r.status} ${d.error?.status || ''} ${msg}`.trim().slice(0, 300); throw e;
   }
   const cand = d.candidates?.[0];
   const part = cand?.content?.parts?.find((x) => x.inlineData || x.inline_data);
@@ -60,4 +68,15 @@ export async function geminiTryOn({ apiKey, model = GEMINI_DEFAULT_MODEL, person
   }
   const img = part.inlineData || part.inline_data;
   return { image: `data:${img.mimeType || img.mime_type || 'image/png'};base64,${img.data}` };
+}
+
+/** Busca entre los modelos de la cuenta uno que genere imágenes (por si el predeterminado cambió de nombre). */
+export async function pickImageModel(apiKey) {
+  try {
+    const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models?pageSize=200', { headers: { 'x-goog-api-key': apiKey }, signal: AbortSignal.timeout(10000) });
+    const d = await r.json();
+    const names = (d.models || []).filter((m) => (m.supportedGenerationMethods || []).includes('generateContent') && /image/i.test(m.name) && !/imagen/i.test(m.name)).map((m) => m.name.replace(/^models\//, ''));
+    const score = (n) => (/flash/.test(n) ? 2 : 0) + (/preview/.test(n) ? 0 : 1) + (Number((n.match(/(\d+(?:\.\d+)?)/) || [0, 0])[1]) || 0) / 10;
+    return names.sort((a, b) => score(b) - score(a))[0] || null;
+  } catch { return null; }
 }

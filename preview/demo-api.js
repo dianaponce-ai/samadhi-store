@@ -909,7 +909,7 @@ window.__SAMADHI_API = async (url, { method = 'GET', body } = {}) => {
     try { r = await fetch('/api/probador', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ photo: b.photo, photoSize: b.photoSize, garmentUrl: b.garmentUrl, kind: b.kind || S.garments[p.id]?.kind, name: p.name }) }); d = await r.json().catch(() => ({})); }
     catch { r = null; }
     if (!r || r.status === 404 || r.status === 405 || d.code === 'sin-clave') { const err = new Error('El probador con IA no está disponible acá.'); err.data = { code: 'sin-ia' }; err.status = 503; throw err; }
-    if (!r.ok || !d.image) { const err = new Error(d.error || 'No pudimos generar la imagen.'); err.data = { code: d.code }; err.status = r.status; throw err; }
+    if (!r.ok || !d.image) { const err = new Error(d.error || 'No pudimos generar la imagen.'); err.data = { code: d.code, detail: d.detail || `${r.status}` }; err.status = r.status; throw err; }
     const id = token(); const log = { id: S.tryons.length + 1, at: sqlDate(), product_id: p.id, status: 'lista', ms: 0, added: 0 };
     S.tryons.push(log); tryJobs.set(id, { at: 0, log: log.id, image: d.image }); save();
     return { id };
