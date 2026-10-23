@@ -321,10 +321,23 @@ function openProduct(slug, push = true) {
   const first = p.variants.find(avail) || p.variants[0];
   cur = { p, color: first.color || '', size: p.sizes.length === 1 ? p.sizes[0] : '', other: p.others.length === 1 ? p.others[0] : (first.other || ''), qty: 1, img: 0 };
   if (p.sizes.length === 1 && !avail(variantFor(p, cur.color, cur.size, cur.other) || {})) cur.size = '';
+  pdp.quote = null; pdp.quoteErr = '';
   renderModal();
   openLayer('#modal');
+  $('#modal').scrollTop = 0;
+  setTimeout(() => $('#pName')?.focus({ preventScroll: true }), 80); // el foco va al nombre, no a la miga de pan
   if (push) safeHash(`#p/${slug}`);
   document.title = `${p.name} · Samadhi Style`;
+}
+// Ficha de producto (página completa): galería grande a la izquierda y datos fijos a la derecha.
+const FAV_KEY = 'samadhi-favoritos';
+const favs = (() => { try { return new Set(JSON.parse(localStorage.getItem(FAV_KEY) || '[]')); } catch { return new Set(); } })();
+const saveFavs = () => { try { localStorage.setItem(FAV_KEY, JSON.stringify([...favs])); } catch {} };
+const pdp = { cp: '', quoting: false, quote: null, quoteErr: '' };
+function splitDesc(d) {
+  const t = String(d || '').replace(/\r/g, '');
+  const m = t.search(/\n?\s*MEDIDAS\b/i);
+  return m < 0 ? { details: t.trim(), measures: '' } : { details: t.slice(0, m).trim(), measures: t.slice(m).replace(/^\s*MEDIDAS\s*/i, '').trim() };
 }
 function renderModal() {
   const { p, color, size, other, qty, img } = cur;
@@ -336,35 +349,74 @@ function renderModal() {
   let note = '';
   if (v && v.stock !== null && v.stock > 0 && v.stock <= 2 && !needsSize) note = v.stock === 1 ? 'Última unidad en este talle' : 'Quedan 2 en este talle';
   if (v && !avail(v) && !needsSize) note = 'Este color y talle se agotó';
-  const max = v?.stock ?? 10;
   const price = v ? (v.promo ?? v.price) : nowPrice(p);
   const list = v ? v.price : p.price;
   const images = p.images.length ? p.images : [null];
+  const cat = p.categories.map((id) => CAT.categories.find((c) => c.id === id)).find(Boolean);
+  const { details, measures } = splitDesc(p.desc);
+  const fav = favs.has(p.id);
+  const related = CAT.products.filter((x) => x.id !== p.id && x.inStock && x.categories.some((c) => p.categories.includes(c))).slice(0, 8);
+  const q = pdp.quote;
   $('#modal').innerHTML = `
-    <button class="close" data-close aria-label="Cerrar"><svg viewBox="0 0 16 16"><path d="M2 2l12 12M14 2L2 14"/></svg></button>
-    <div class="gallery">
-      ${images.length > 1 ? `<div class="thumbs">${images.map((u, i) => `<button class="${i === img ? 'on' : ''}" data-img="${i}" aria-label="Foto ${i + 1}">${imgTag(p, u, { sizes: '64px', color })}</button>`).join('')}</div>` : '<div></div>'}
-      <div class="main">${imgTag(p, images[img], { sizes: '(max-width: 800px) 100vw, 560px', eager: true, color })}</div>
+    <div class="pdp-top">
+      <nav class="crumbs caps" aria-label="Estás en"><button type="button" data-close>Inicio</button>${cat ? `<span>/</span><button type="button" data-cat="${cat.id}">${esc(cat.name)}</button>` : ''}<span>/</span><span aria-current="page">${esc(p.name)}</span></nav>
+      <button class="close" data-close aria-label="Cerrar"><svg viewBox="0 0 16 16"><path d="M2 2l12 12M14 2L2 14"/></svg></button>
     </div>
-    <div class="pinfo">
-      <div class="caps" style="color:var(--suave)">${esc([p.collection, ...p.categories.map((id) => CAT.categories.find((c) => c.id === id)?.name).filter(Boolean)].filter(Boolean).join(' · ') || 'Samadhi Style')}</div>
-      <h3 id="pName">${esc(p.name)}</h3>
-      <div class="price money" style="font-size:18px">${price < list ? `<b>${fmt(price)}</b><s>${fmt(list)}</s><span class="badge off" style="font-size:9px">−${Math.round((1 - price / list) * 100)}%</span>` : `<b>${fmt(price)}</b>`}</div>
-      <div class="payline">${cuotas() ? `<span>${esc(instLine(price))}</span>` : ''}${transferPct() ? `<span><b class="money">${fmt(price * (1 - transferPct() / 100))}</b> con transferencia (${transferPct()}% OFF)</span>` : ''}</div>
-      ${p.colors.length ? `<div><div class="opt-label caps">Color <b>${esc(color)}</b></div><div class="swatches">${p.colors.map((c) => `<button class="sw ${c === color ? 'on' : ''} ${colorOk(c) ? '' : 'no'}" data-c="${esc(c)}" aria-label="${esc(c)}${colorOk(c) ? '' : ' (agotado)'}" title="${esc(c)}" style="background:${colorHex(c)}"></button>`).join('')}</div></div>` : ''}
-      ${p.others.length > 1 ? `<div><div class="opt-label caps">Opción <b>${esc(other)}</b></div><div class="sizes">${p.others.map((o) => `<button class="sz ${o === other ? 'on' : ''}" data-o="${esc(o)}">${esc(o)}</button>`).join('')}</div></div>` : ''}
-      ${p.sizes.length ? `<div><div class="opt-label caps">Talle <b>${size ? esc(size) : 'Elegí tu talle'}</b></div><div class="sizes">${p.sizes.map((s) => `<button class="sz ${s === size ? 'on' : ''} ${sizeOk(s) ? '' : 'no'}" data-s="${esc(s)}" ${sizeOk(s) ? '' : 'aria-disabled="true"'}>${esc(s)}</button>`).join('')}</div></div>` : ''}
-      <div class="stocknote">${note}</div>
-      <div class="addrow">
-        <div class="qty"><button data-q="-1" aria-label="Menos" ${qty <= 1 ? 'disabled' : ''}>−</button><span>${qty}</span><button data-q="1" aria-label="Más" ${qty >= max ? 'disabled' : ''}>+</button></div>
-        <button class="btn solid" id="addBtn" ${ready ? '' : 'disabled'}>${!p.inStock ? 'Agotado' : needsSize ? 'Elegí un talle' : ready ? 'Sumar a la bolsa' : 'Sin stock'}</button>
+    <div class="pdp">
+      <div class="pdp-gallery ${images.length === 1 ? 'one' : ''}" aria-label="Fotos de ${esc(p.name)}">
+        ${images.map((u, i) => `<figure class="${i === 0 && images.length % 2 ? 'wide' : ''}">${imgTag(p, u, { sizes: '(max-width: 800px) 100vw, 34vw', eager: i === 0, color })}</figure>`).join('')}
       </div>
-      ${tryonOk(p) ? `<button class="tryon-cta" type="button" data-tryon><span class="tryon-ic" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3l1.6 4.4L18 9l-4.4 1.6L12 15l-1.6-4.4L6 9l4.4-1.6z"/><path d="M18.5 15l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7z"/></svg></span><span><b>Probátelo</b><small>Subí una foto tuya y mirá cómo te queda</small></span></button>` : ''}
-      ${p.desc ? `<p class="desc">${esc(p.desc)}</p>` : ''}
-      <div class="pmeta"><span>Envíos con Andreani a todo el país${CAT.shipping.freeShippingFrom ? ` · Sin cargo desde ${fmt(CAT.shipping.freeShippingFrom)}` : ''}</span>${p.ref ? `<span>Art. ${esc(p.ref)}</span>` : ''}</div>
-    </div>`;
+      ${images.length > 1 ? `<div class="pdp-dots" aria-hidden="true">${images.map((_, i) => `<span class="${i === 0 ? 'on' : ''}"></span>`).join('')}</div>` : ''}
+      <div class="pdp-info"><div class="pdp-sticky">
+        <div class="pdp-tags">${p.isNew ? '<span class="tag">New in</span>' : ''}${price < list ? `<span class="tag off">−${Math.round((1 - price / list) * 100)}%</span>` : ''}</div>
+        <div class="pdp-head">
+          <h3 id="pName" tabindex="-1">${esc(p.name)}</h3>
+          <button class="fav ${fav ? 'on' : ''}" type="button" data-fav aria-pressed="${fav}" aria-label="${fav ? 'Sacar de' : 'Agregar a'} tus favoritos"><svg viewBox="0 0 24 24"><path d="M12 20.5s-7.5-4.6-7.5-10.1A4.4 4.4 0 0112 7.6a4.4 4.4 0 017.5 2.8c0 5.5-7.5 10.1-7.5 10.1z"/></svg></button>
+        </div>
+        <div class="pdp-price money">${price < list ? `<s>${fmt(list)}</s>` : ''}<b>${fmt(price)}</b></div>
+        <div class="pdp-tax">Precio sin impuestos nacionales: <span class="money">${fmt(price / 1.21)}</span></div>
+        <div class="payline">${cuotas() ? `<span>${esc(instLine(price))}</span>` : ''}${transferPct() ? `<span><b class="money">${fmt(price * (1 - transferPct() / 100))}</b> con transferencia (${transferPct()}% OFF)</span>` : ''}</div>
+        ${p.colors.length ? `<div class="pdp-opt"><div class="opt-label caps">Color: <b>${esc(color || '—')}</b></div><div class="swatches">${p.colors.map((c) => `<button class="sw ${c === color ? 'on' : ''} ${colorOk(c) ? '' : 'no'}" data-c="${esc(c)}" aria-label="${esc(c)}${colorOk(c) ? '' : ' (agotado)'}" title="${esc(c)}" style="background:${colorHex(c)}"></button>`).join('')}</div></div>` : ''}
+        ${p.others.length > 1 ? `<div class="pdp-opt"><div class="opt-label caps">Opción: <b>${esc(other)}</b></div><div class="sizes">${p.others.map((o) => `<button class="sz ${o === other ? 'on' : ''}" data-o="${esc(o)}">${esc(o)}</button>`).join('')}</div></div>` : ''}
+        ${p.sizes.length ? `<div class="pdp-opt"><div class="opt-label caps"><span>Talle${size ? `: <b>${esc(size)}</b>` : ''}</span>${measures ? '<button class="link-btn" type="button" data-guide>Guía de talles</button>' : ''}</div>
+          <div class="sizes">${p.sizes.map((s) => `<button class="sz ${s === size ? 'on' : ''} ${sizeOk(s) ? '' : 'no'}" data-s="${esc(s)}" ${sizeOk(s) ? '' : 'aria-disabled="true"'}>${esc(s)}</button>`).join('')}</div></div>` : ''}
+        <div class="stocknote">${note}</div>
+        <button class="btn solid wide pdp-add" id="addBtn" ${ready ? '' : 'disabled'}>${!p.inStock ? 'Agotado' : needsSize ? 'Seleccioná tu talle' : ready ? 'Agregar a la bolsa' : 'Sin stock'}</button>
+        ${tryonOk(p) ? `<button class="tryon-cta" type="button" data-tryon><span class="tryon-ic" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3l1.6 4.4L18 9l-4.4 1.6L12 15l-1.6-4.4L6 9l4.4-1.6z"/><path d="M18.5 15l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7z"/></svg></span><span><b>Probátelo</b><small>Subí una foto tuya y mirá cómo te queda</small></span></button>` : ''}
+        <form class="pdp-ship" id="pdpShip" novalidate>
+          <label for="pdpCp" class="caps">Calculá el envío</label>
+          <div><input id="pdpCp" inputmode="numeric" placeholder="Código postal" value="${esc(pdp.cp)}" maxlength="8" autocomplete="postal-code"><button class="btn sm" type="submit" ${pdp.quoting ? 'disabled' : ''}>${pdp.quoting ? '…' : 'Calcular'}</button></div>
+          ${pdp.quoteErr ? `<p class="note err">${esc(pdp.quoteErr)}</p>` : ''}
+          ${q ? `<ul>${q.map((o) => `<li><span>${esc(o.label)}<small>${esc(o.error || o.days || o.detail || '')}</small></span><span class="money">${o.error ? '' : o.cost ? fmt(o.cost) : 'Sin cargo'}</span></li>`).join('')}</ul>` : ''}
+        </form>
+        <div class="pdp-acc">
+          ${details ? `<details open><summary>Detalles de la prenda</summary><div>${esc(details).replace(/\n/g, '<br>')}</div></details>` : ''}
+          ${measures ? `<details id="pdpMeasures"><summary>Medidas</summary><div>${esc(measures).replace(/\n/g, '<br>')}</div></details>` : ''}
+          <details><summary>Envíos y retiro</summary><div>Envíos a todo el país con Andreani, a domicilio o a sucursal${CAT.shipping.freeShippingFrom ? `. Sin cargo desde ${fmt(CAT.shipping.freeShippingFrom)}` : ''}.${CAT.shipping.pickup ? ` Retiro sin cargo en ${esc(CAT.shipping.pickup.address)}.` : ''}</div></details>
+          <details><summary>Medios de pago</summary><div>${cuotas() ? `${esc(instLine(price))} con Mercado Pago.` : 'Mercado Pago.'}${transferPct() ? ` ${transferPct()}% OFF pagando por transferencia.` : ''}</div></details>
+          <details><summary>Cambios y devoluciones</summary><div>Tenés 30 días para cambiar la prenda, sin uso y con etiquetas, y 10 días para arrepentirte de la compra. <button class="link-btn" type="button" data-legal="returns">Ver la política completa</button></div></details>
+        </div>
+        ${p.ref ? `<div class="pdp-ref caps">Art. ${esc(p.ref)}</div>` : ''}
+      </div></div>
+    </div>
+    ${related.length ? `<section class="pdp-related"><h4 class="caps">También te puede gustar</h4><div class="pdp-rel-row">${related.map(cardHTML).join('')}</div></section>` : ''}
+    <div class="pdp-bar"><div><b>${esc(p.name)}</b><span class="money">${fmt(price)}</span></div><button class="btn solid" type="button" data-add-bar ${p.inStock ? '' : 'disabled'}>${ready ? 'Agregar a la bolsa' : p.inStock ? 'Elegí talle' : 'Agotado'}</button></div>`;
+  // Celular: los puntitos siguen a la foto visible.
+  const g = $('#modal .pdp-gallery');
+  if (g && images.length > 1) g.onscroll = () => { const i = Math.round(g.scrollLeft / g.clientWidth); $$('#modal .pdp-dots span').forEach((d, k) => d.classList.toggle('on', k === i)); };
 }
 function bindModal() {
+  $('#modal').addEventListener('submit', async (e) => {
+    if (e.target.id !== 'pdpShip') return;
+    e.preventDefault();
+    pdp.cp = $('#pdpCp').value.replace(/\D/g, '').slice(0, 4);
+    if (pdp.cp.length !== 4) { pdp.quoteErr = 'El código postal tiene 4 números.'; pdp.quote = null; return renderModal(); }
+    const v = variantFor(cur.p, cur.color, cur.size, cur.other) || cur.p.variants.find(avail) || cur.p.variants[0];
+    pdp.quoting = true; pdp.quoteErr = ''; renderModal();
+    try { pdp.quote = (await api('/api/shipping/quote', { cp: pdp.cp, items: [{ variant_id: v.id, qty: 1 }] })).options; }
+    catch (err) { pdp.quoteErr = err.message; pdp.quote = null; }
+    pdp.quoting = false; renderModal();
+  });
   $('#modal').addEventListener('click', (e) => {
     if (!cur) return;
     const t = e.target;
@@ -384,6 +436,9 @@ function bindModal() {
       closeAll(); openCart(); return;
     }
     if (t.closest('[data-tryon]')) { const p = cur.p, img = cur.img; closeAll(); openTryon(p, img); return; }
+    if (t.closest('[data-fav]')) { const id = cur.p.id; if (favs.has(id)) favs.delete(id); else favs.add(id); saveFavs(); toast(favs.has(id) ? 'Agregado a tus favoritos' : 'Sacado de tus favoritos'); renderModal(); return; }
+    if (t.closest('[data-guide]')) { const d = $('#pdpMeasures'); if (d) { d.open = true; d.scrollIntoView({ behavior: 'smooth', block: 'center' }); } return; }
+    if (t.closest('[data-add-bar]')) { const b = $('#addBtn'); if (b && !b.disabled) b.click(); else $('#modal .pdp-info .sizes, #modal .pdp-info .swatches')?.scrollIntoView({ behavior: 'smooth', block: 'center' }); return; }
     if (t.closest('[data-close]')) closeAll();
   });
 }
