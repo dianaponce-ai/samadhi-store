@@ -108,7 +108,7 @@ function renderHero() {
   const fakeP = (b) => ({ id: -1, name: b.title, variants: [] });
   $('#slides').innerHTML = banners.map((b, i) => `
     <article class="slide ${b.tone === 'light' ? 'light' : ''}" role="group" aria-roledescription="banner" aria-label="${i + 1} de ${banners.length}" ${i ? 'aria-hidden="true"' : ''}>
-      <div class="bg">${b.video_url ? `<video poster="${esc(b.image_url)}" muted loop playsinline preload="${i === 0 ? 'auto' : 'metadata'}" ${reduceMotion || i ? '' : 'autoplay'} aria-hidden="true">${/\.mp4$/i.test(b.video_url) ? `<source src="${esc(b.video_url.replace(/\.mp4$/i, '.webm'))}" type="video/webm">` : ''}<source src="${esc(b.video_url)}" type="video/mp4"></video>` : `<img src="${esc(sized(b.image_url, 1024))}" alt="" ${i === 0 ? 'fetchpriority="high"' : 'loading="lazy"'} decoding="async" onerror="this.outerHTML='<div class=&quot;ph&quot;></div>'">`}</div>
+      <div class="bg">${b.video_url ? `<video poster="${esc(b.image_url)}" muted loop playsinline preload="${i === 0 ? 'auto' : 'metadata'}" ${reduceMotion || i ? '' : 'autoplay'} aria-hidden="true"><source src="${esc(b.video_url)}" type="video/mp4">${/\.mp4$/i.test(b.video_url) ? `<source src="${esc(b.video_url.replace(/\.mp4$/i, '.webm'))}" type="video/webm">` : ''}</video>` : `<img src="${esc(sized(b.image_url, 1024))}" alt="" ${i === 0 ? 'fetchpriority="high"' : 'loading="lazy"'} decoding="async" onerror="this.outerHTML='<div class=&quot;ph&quot;></div>'">`}</div>
       <div class="copy">
         ${b.eyebrow ? `<div class="eyebrow">${esc(b.eyebrow)}</div>` : '<div></div>'}
         <h2>${esc(b.title)}</h2>
