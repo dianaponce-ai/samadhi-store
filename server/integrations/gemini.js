@@ -8,10 +8,16 @@ export const GEMINI_DEFAULT_MODEL = 'gemini-2.5-flash-image';
 const RATIOS = [['1:1', 1], ['2:3', 2 / 3], ['3:2', 3 / 2], ['3:4', 3 / 4], ['4:3', 4 / 3], ['4:5', 4 / 5], ['5:4', 5 / 4], ['9:16', 9 / 16], ['16:9', 16 / 9]];
 const KIND_ES = { top: 'upper-body garment (top)', bottom: 'lower-body garment (trousers, skirt or shorts)', full: 'one-piece dress (it covers the torso and continues down to its own hemline)' };
 // Qué se saca y qué se deja de la ropa de la clienta, según el tipo de prenda.
+// Los modelos de imagen siguen mejor una descripción de cómo tiene que quedar la foto final que una lista de prohibiciones.
 const SWAP = {
-  top: 'Replace ONLY the customer\'s current top with this garment. Keep their current trousers, skirt or shorts and their shoes exactly as they are.',
-  bottom: 'Replace ONLY the customer\'s current trousers, skirt or shorts with this garment. Keep their current top and their shoes exactly as they are.',
-  full: 'This is a DRESS. Completely remove BOTH the customer\'s current top AND their current trousers, skirt or shorts: nothing of their previous outfit may remain visible (no shirt collar, no sleeves, no trouser legs under the dress). The dress replaces the whole outfit. Below its hemline show the customer\'s bare legs, and keep only their shoes. Never layer the dress over or under their previous clothes and never turn it into a skirt or a top.',
+  top: 'Change only the upper body: the customer now wears this garment instead of her current top, tucked or untucked as it is worn in image 2. Her current trousers, skirt or shorts and her shoes stay exactly as they are.',
+  bottom: 'Change only the lower body: the customer now wears this garment instead of her current trousers, skirt or shorts. Her current top and her shoes stay exactly as they are.',
+  full: 'This is a complete outfit change. In the final photo the customer wears ONLY the dress from image 2 plus her own shoes. The dress covers her from its neckline down to its own hemline, at the same height on her body as on the model in image 2 (for example, if it ends mid-thigh on the model, it ends mid-thigh on her). From the hemline down, her bare legs are visible down to her shoes. Her original shirt and her original trousers no longer exist in the photo: the dress is the only clothing she has on.',
+};
+const FINAL_CHECK = {
+  full: 'Before answering, check the result: if any part of her original trousers, shirt, collar or sleeves is still visible, redraw it so that only the dress, her bare legs and her shoes remain.',
+  top: 'Before answering, check that her original top is no longer visible anywhere.',
+  bottom: 'Before answering, check that her original trousers, skirt or shorts are no longer visible anywhere.',
 };
 
 /** Relación de aspecto soportada más cercana a la de la foto de la clienta. */
@@ -24,12 +30,14 @@ export function buildPrompt({ kind, name, flat }) {
   const k = KIND_ES[kind] || 'garment';
   return [
     `You are a virtual fitting room for a fashion store. Image 1 is a photo of a customer. Image 2 is the product photo of a ${k}${name ? ` called "${name}"` : ''}${flat ? ', shown on its own' : ', worn by a different model'}.`,
-    `Generate a photorealistic photo of the customer from image 1 wearing exactly the garment from image 2.`,
+    'Edit image 1 so that the customer is wearing exactly the garment from image 2.',
     SWAP[kind] || 'Replace the corresponding clothing of the customer with this garment.',
-    'Reproduce the garment faithfully: same color, fabric, texture, print or pattern, buttons, neckline, sleeves (shape and length), silhouette and total length (mini, midi or maxi) as in image 2, adapted naturally to the customer\'s body, with folds and shadows that match the lighting of image 1.',
+    'Reproduce the garment faithfully: same color, fabric, texture, print or pattern, buttons, neckline, sleeves (shape and length), silhouette and total length as in image 2, adapted naturally to the customer\'s body, with folds and shadows that match the lighting of image 1.',
     'Keep the customer exactly the same: same face and identity, hair, skin tone, body shape and proportions, pose, hands, background, lighting and camera framing.',
-    `Ignore everything else in image 2: the other model, their body, their other clothes, shoes, accessories and background. Do not add text or logos. Return only the edited photo.`,
-  ].join(' ');
+    'From image 2 take only the garment: not the other model, her body, her other clothes, shoes, accessories or background. Do not add text or logos.',
+    FINAL_CHECK[kind] || '',
+    'Return only the edited photo.',
+  ].filter(Boolean).join(' ');
 }
 
 const b64 = (dataUri) => { const m = /^data:(image\/[\w+.-]+);base64,(.+)$/.exec(dataUri || ''); return m ? { mimeType: m[1], data: m[2] } : null; };
