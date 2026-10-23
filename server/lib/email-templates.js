@@ -66,6 +66,47 @@ export function layout(c, { preheader = '', title, body, marketing = false }) {
 const transferBox = (c) => box(`<b>Transferí ${money(c.order.total)}</b> (ya tiene el ${c.transfer.discount}% OFF)<br>
   ${[['Titular', c.transfer.holder], ['Banco', c.transfer.bank], ['CBU / CVU', c.transfer.cbu], ['Alias', c.transfer.alias]].filter((r) => r[1]).map(([k, v]) => `${k}: <b>${e(v)}</b>`).join('<br>')}`);
 
+// ── "Lo que te probaste": textos editables ───────────────
+// Variables: {nombre} {codigo} {descuento} {vence}
+export const TRYON_MAIL_DEFAULTS = {
+  subject: '{nombre}, ¿te acordás de lo que te probaste?',
+  title: 'Lo que te probaste te está esperando.',
+  intro: 'Hola {nombre}, vimos que te probaste estas prendas en el probador virtual. Te las dejamos acá por si querés volver a verlas.',
+  discount: 'Para que te decidas, tenés {descuento} con el código {codigo}. Vale hasta el {vence}.',
+  outro: 'Muchas tienen una o dos unidades por talle. Si tenés dudas con el talle, escribinos por WhatsApp.',
+  button: 'Ver mis prendas',
+};
+const fillVars = (t, v) => String(t || '').replace(/\{(nombre|codigo|descuento|vence)\}/g, (m, k) => v[k] ?? '');
+const para = (t) => e(t).split(/\n{2,}/).map((x) => p(x.replace(/\n/g, '<br>'))).join('');
+/** Valores de las variables para el email del probador. */
+export function tryonVars(c) {
+  const k = c.tryon?.coupon;
+  return { nombre: String(c.name || '').trim().split(/\s+/)[0] || '', codigo: k?.code || '', descuento: k ? (k.kind === 'percent' ? `${k.value}% OFF` : `${money(k.value)} de descuento`) : '', vence: k?.ends_label || '' };
+}
+function tryonItems(c) {
+  const k = c.tryon.coupon;
+  const rows = (c.tryon.items || []).map((i) => {
+    const now = i.promo || i.price;
+    const withCode = k ? (k.kind === 'percent' ? Math.round(now * (100 - k.value) / 100) : null) : null;
+    return `<tr>
+    <td width="92" style="padding:12px 14px 12px 0;vertical-align:top"><a href="${e(abs(c, i.url))}">${i.image ? `<img src="${e(abs(c, i.image))}" width="80" height="106" alt="" style="display:block;width:80px;height:106px;object-fit:cover;background:${SAND}">` : `<div style="width:80px;height:106px;background:${SAND}"></div>`}</a></td>
+    <td style="padding:12px 0;vertical-align:top"><a href="${e(abs(c, i.url))}" style="font-family:${SERIF};font-size:18px;color:${INK};text-decoration:none">${e(i.name)}</a>
+      <div style="font-family:${SANS};font-size:14px;color:${INK};margin-top:8px">${i.promo ? `<s style="color:${MUTED};font-size:12px">${money(i.price)}</s> ` : ''}${money(now)}</div>
+      ${withCode ? `<div style="font-family:${SANS};font-size:13px;color:${OLIVE};margin-top:4px">Con tu código: <b>${money(withCode)}</b></div>` : ''}
+      <a href="${e(abs(c, i.url))}" style="display:inline-block;margin-top:8px;font-family:${SANS};font-size:11px;letter-spacing:2px;text-transform:uppercase;color:${INK}">Ver la prenda</a></td></tr>`;
+  }).join('');
+  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-top:1px solid ${SAND};border-bottom:1px solid ${SAND};margin:22px 0">${rows}</table>`;
+}
+function tryonHtml(c) {
+  const T = { ...TRYON_MAIL_DEFAULTS, ...(c.texts || {}) }, v = tryonVars(c), k = c.tryon.coupon;
+  const codeBox = k ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:22px 0"><tr><td align="center" style="background:${OLIVE};padding:22px 20px;color:${IVORY}">
+      <div style="font-family:${SANS};font-size:10px;letter-spacing:4px">TU CÓDIGO</div>
+      <div style="font-family:${SERIF};font-size:30px;letter-spacing:3px;margin:8px 0">${e(k.code)}</div>
+      <div style="font-family:${SANS};font-size:13px;line-height:1.6">${e(fillVars(T.discount, v))}</div></td></tr></table>` : '';
+  return layout(c, { preheader: k ? `${v.descuento} con el código ${k.code}` : 'Las prendas que te probaste.', title: e(fillVars(T.title, v)), marketing: true, body:
+    para(fillVars(T.intro, v)) + codeBox + tryonItems(c) + (T.outro ? para(fillVars(T.outro, v)) : '') + button(c.links.tryon || c.links.shop, fillVars(T.button, v) || 'Ver mis prendas') });
+}
+
 // ── Catálogo de emails ───────────────────────────────────
 // group: cuenta | pedido | pago | envio | recordatorio | equipo
 export const TEMPLATES = {
@@ -196,6 +237,11 @@ export const TEMPLATES = {
       p(`Hola${c.name ? ' ' + first(c.name) : ''}, muchas de nuestras prendas tienen una o dos unidades por talle. Las tuyas siguen en la bolsa, pero no podemos guardarlas para siempre.`) +
       items(c, c.cart.items) + button(c.links.cart, 'Terminar mi compra') + cartLink(c) + small('Es el último recordatorio que te mandamos sobre esta bolsa.') }),
   },
+  tryon_followup: {
+    label: 'Lo que te probaste', group: 'recordatorio', marketing: true, to: 'Clienta', when: 'Lo mandás vos desde Panel → Probador → Quién se probó, con las prendas que eligió y, si querés, un código de descuento.',
+    subject: (c) => fillVars({ ...TRYON_MAIL_DEFAULTS, ...(c.texts || {}) }.subject, tryonVars(c)),
+    html: (c) => tryonHtml(c),
+  },
   withdrawal_received: {
     label: 'Arrepentimiento recibido', group: 'pedido', to: 'Clienta', when: 'Cuando usa el Botón de arrepentimiento. Incluye el código del trámite.',
     subject: (c) => `Recibimos tu pedido de arrepentimiento · ${e(c.withdrawal.code)}`,
@@ -244,11 +290,13 @@ export function sampleContext(store, sample = {}) {
   const order = { number: 'S-1042', subtotal, discount: 0, shippingCost: 6200, total: subtotal + 6200, shippingLabel: 'Andreani a domicilio', shippingMethod: 'andreani_domicilio', items, customerName: 'Lucía Fernández', email: 'lucia@ejemplo.com', phone: '221 555 0000', paymentMethod: 'mercadopago' };
   return {
     store, name: 'Lucía Fernández', order, reason: 'porque no se registró el pago a tiempo',
-    links: { order: `${store.url}/pedido.html`, shop: store.url, cart: `${store.url}/?carrito=ejemplo`, reset: `${store.url}/?reset=ejemplo`, unsubscribe: `${store.url}/api/email/baja`, panel: `${store.url}/admin/` },
+    links: { tryon: store.url, order: `${store.url}/pedido.html`, shop: store.url, cart: `${store.url}/?carrito=ejemplo`, reset: `${store.url}/?reset=ejemplo`, unsubscribe: `${store.url}/api/email/baja`, panel: `${store.url}/admin/` },
     transfer: { holder: 'Samadhi Style', bank: 'Banco', cbu: '0000000000000000000000', alias: 'SAMADHI.STYLE', hours: 48, discount: 10 },
     tracking: { number: '360000123456789', url: 'https://www.andreani.com/' },
     pickup: { address: 'Nuestro local', hours: 'Lunes a sábado de 10 a 19' },
     cart: { items, total: subtotal },
+    tryon: { items: [{ name: 'Vestido Ranya', price: 125000, promo: null, image: '', url: '/' }, { name: 'Blazer Lola', price: 98000, promo: 88200, image: '', url: '/' }], coupon: { code: 'VOLVE-LUCIA', kind: 'percent', value: 10, ends_label: 'domingo 1 de noviembre' } },
+    texts: sample.texts,
     withdrawal: { code: 'ARR-7K2M9Q', orderNumber: 'S-1042', email: 'lucia@ejemplo.com', reason: 'El talle me quedó grande.' },
     lowStock: [{ name: 'Vestido Ranya', variant: 'Negro · Talle M', stock: 1 }, { name: 'Wide Leg Black', variant: 'Talle 28', stock: 0 }],
   };

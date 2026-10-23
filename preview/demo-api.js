@@ -278,6 +278,38 @@ const labelOf = (v) => [v.color, v.size && `Talle ${v.size}`, v.other].filter(Bo
 const staffMe = () => S.staff.find((u) => u.id === S.session.staff) || null;
 const customerMe = () => S.customers.find((c) => c.id === S.session.customer && c.password) || null;
 function tryonLogin() { if (S.settings.tryon.requireLogin !== false && !customerMe() && !S.session.staff) fail(401, 'Para usar el probador virtual ingresá a tu cuenta (o creala, es gratis).', { code: 'login' }); }
+function tfDraft(id) {
+  const c = S.customers.find((x) => x.id === Number(id)); if (!c) fail(404, 'No encontramos esa clienta.');
+  const tried = new Map();
+  for (const t of S.tryons.filter((x) => x.customer_id === c.id && ['lista', 'prueba', 'propio'].includes(x.status)).sort((a, z) => z.at.localeCompare(a.at))) {
+    const x = tried.get(t.product_id) || { product_id: t.product_id, times: 0, last: t.at, added: 0 }; x.times++; x.added = x.added || t.added; tried.set(t.product_id, x);
+  }
+  const products = [...tried.values()].map((t) => { const p = S.products.find((x) => x.id === t.product_id); if (!p) return null;
+    const av = p.variants.filter((v) => v.stock === null || v.stock > 0), vs = av.length ? av : p.variants;
+    const price = Math.min(...vs.map((v) => v.price)), now = Math.min(...vs.map((v) => v.promo_price || v.price));
+    return { ...t, name: p.name, price, promo: now < price ? now : null, image: p.images[0] || '', url: '/#p/' + p.slug, visible: !!p.visible, inStock: av.length > 0 }; }).filter(Boolean).slice(0, 30);
+  const D = window.__EMAIL.TRYON_MAIL_DEFAULTS;
+  return { customer: { id: c.id, name: c.name, email: c.email, optOut: !!c.optOut }, products, texts: { ...D, ...(S.settings.tryonMail || {}) }, defaults: D, sent: (S.followups || []).filter((f) => f.customer_id === c.id).slice().reverse() };
+}
+function tfCoupon(customer, d) {
+  if (!d || !d.kind || d.kind === 'none') return null;
+  const value = Math.round(Number(d.value) || 0);
+  if (d.kind === 'percent' && !(value >= 1 && value <= 90)) fail(422, 'El descuento tiene que ser entre 1% y 90%.');
+  if (d.kind === 'fixed' && !(value >= 100)) fail(422, 'Escribí el monto del descuento.');
+  const days = Math.min(90, Math.max(1, Math.round(Number(d.days) || 7)));
+  const ends = new Date(Date.now() - 3 * 3600e3 + days * 864e5).toISOString().slice(0, 10);
+  const dd = new Date(ends + 'T12:00:00Z');
+  const label = `${['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'][dd.getUTCDay()]} ${dd.getUTCDate()} de ${['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'][dd.getUTCMonth()]}`;
+  const nm = String(customer.name || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().replace(/[^A-Z]/g, '').slice(0, 6) || 'SAMADHI';
+  return { kind: d.kind === 'fixed' ? 'fixed' : 'percent', value, ends_at: ends, ends_label: label, code: `VOLVE-${nm}-XXXX` };
+}
+function tfCtx(d, b, k) {
+  const chosen = (b.product_ids || []).map(Number);
+  const items = d.products.filter((p) => chosen.includes(p.product_id)).map((p) => ({ ...p, url: k ? `/?cupon=${encodeURIComponent(k.code)}${p.url.slice(1)}` : p.url }));
+  if (!items.length) fail(422, 'Elegí al menos una prenda para el email.');
+  const D = window.__EMAIL.TRYON_MAIL_DEFAULTS, t = b.texts || {};
+  return { name: d.customer.name, texts: Object.fromEntries(Object.keys(D).map((x) => [x, t[x] === undefined ? d.texts[x] : String(t[x])])), tryon: { items, coupon: k }, links: { tryon: items.length === 1 ? items[0].url : k ? `/?cupon=${encodeURIComponent(k.code)}` : '/' } };
+}
 function tryonPeople(days, q, customerId) {
   const since = Date.now() - days * 864e5;
   let rows = S.tryons.filter((t) => t.customer_id && ['lista', 'prueba', 'propio'].includes(t.status) && Date.parse(t.at.replace(' ', 'T') + 'Z') > since && (!customerId || t.customer_id === customerId))
@@ -797,7 +829,20 @@ function adminRoute(method, path, q, b, raw) {
       stats: { today: S.tryons.filter((t) => ok(t) && within(t, 1)).length, month: month.length, added: month.reduce((a, t) => a + t.added, 0), errors: S.tryons.filter((t) => t.status === 'error' && within(t, 30)).length,
         avgSeconds: done.length ? Math.round(done.reduce((a, t) => a + t.ms, 0) / done.length / 100) / 10 : null, top } };
   }
-  if (path === '/tryon/people') return tryonPeople(Math.min(365, Number(q.get('days')) || 30), q.get('q') || '', q.get('customer') ? Number(q.get('customer')) : null);
+  if (path === '/tryon/people') { const r = tryonPeople(Math.min(365, Number(q.get('days')) || 30), q.get('q') || '', q.get('customer') ? Number(q.get('customer')) : null); for (const x of r.people) x.mailed = (S.followups || []).filter((f) => f.customer_id === x.customer_id).map((f) => f.at).sort().at(-1) || null; return r; }
+  if ((m = path.match(/^\/tryon\/followup\/(\d+)$/))) return tfDraft(Number(m[1]));
+  if (path === '/tryon/followup/preview') { const d = tfDraft(b.customer_id); return window.__EMAIL.render('tryon_followup', { store: demoStore(S), ...tfCtx(d, b, tfCoupon(d.customer, b.discount)), links: { ...LINKS, ...tfCtx(d, b, tfCoupon(d.customer, b.discount)).links } }); }
+  if (path === '/tryon/followup') {
+    const d = tfDraft(b.customer_id);
+    if (d.customer.optOut) fail(409, 'Esta clienta se dio de baja de los emails de recordatorio, así que no le podemos mandar este.');
+    let k = tfCoupon(d.customer, b.discount);
+    if (k) { k = { ...k, code: k.code.replace('XXXX', Math.random().toString(36).slice(2, 6).toUpperCase()) }; S.coupons.push({ id: ++S.ids.coupon, code: k.code, kind: k.kind, value: k.value, min_subtotal: 0, max_uses: 1, uses: 0, starts_at: null, ends_at: k.ends_at, active: 1 }); }
+    const ctx = tfCtx(d, b, k);
+    if (b.save_default) S.settings.tryonMail = ctx.texts;
+    const status = mailLog(S, 'tryon_followup', d.customer.email, ctx, null, null, true);
+    (S.followups = S.followups || []).push({ at: sqlDate(), customer_id: d.customer.id, coupon_code: k?.code || null, status, sent_by: me?.name || '' });
+    return { status, coupon: k ? { code: k.code, ends_at: k.ends_at } : null };
+  }
   if (path === '/tryon' && method === 'PUT') {
     onlyAdmin();
     const t = S.settings.tryon;

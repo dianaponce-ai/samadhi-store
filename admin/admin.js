@@ -847,13 +847,77 @@ async function prepareOne(row, imageIndex, kind) {
   return { data: g.canvas.toDataURL('image/webp', 0.86), pts: g.pts.map((p) => ({ name: p.name, x: Math.round(p.x * 10) / 10, y: Math.round(p.y * 10) / 10 })), size: g.size, quality: g.quality, kind, image: imageIndex };
 }
 
+// Email "Lo que te probaste": elegir prendas, sumar un descuento, editar los textos y ver cómo queda antes de mandarlo.
+async function tryonMailer(customerId, onSent) {
+  const d = await api('/tryon/followup/' + customerId);
+  const T = d.texts;
+  const m = document.createElement('div'); m.className = 'g-modal';
+  m.innerHTML = `<div class="card" style="width:min(1180px,100%);max-height:94vh"><div class="card-head"><h2>Email para ${esc(d.customer.name)}</h2><button class="btn sm" type="button" data-x>Cerrar</button></div>
+    ${d.customer.optOut ? '<div class="notice">Esta clienta se dio de baja de los emails de recordatorio: no se le puede mandar.</div>' : ''}
+    ${d.sent.length ? `<p class="small muted">Ya le mandaste este email ${d.sent.map((x) => `el ${date(x.at)}${x.coupon_code ? ` (código ${esc(x.coupon_code)})` : ''}`).join(', ')}.</p>` : ''}
+    <div class="grid g2" style="grid-template-columns:minmax(300px,1fr) minmax(320px,1.1fr);align-items:start">
+      <form class="form" id="tmForm">
+        <div class="fl"><span>Para</span><input value="${esc(d.customer.name)} <${esc(d.customer.email)}>" readonly></div>
+        <div class="fl"><span>Prendas que se probó (elegí cuáles van)</span>
+          <div style="display:grid;gap:6px;max-height:260px;overflow:auto;border:1px solid var(--line);border-radius:8px;padding:8px">${d.products.map((p) => `
+            <label style="display:flex;gap:10px;align-items:center"><input type="checkbox" name="pid" value="${p.product_id}" ${p.inStock && p.visible ? 'checked' : ''}>${p.image ? `<img class="thumb" src="${esc(thumb(p.image))}" alt="" style="width:32px;height:42px">` : ''}
+              <span style="flex:1">${esc(p.name)}<span class="small muted" style="display:block">${p.promo ? `<s>${fmt(p.price)}</s> ` : ''}${fmt(p.promo || p.price)} · se la probó ${p.times} ${p.times === 1 ? 'vez' : 'veces'}${p.added ? ' · la sumó a la bolsa' : ''}${!p.inStock ? ' · <b>sin stock</b>' : !p.visible ? ' · oculta' : ''}</span></span></label>`).join('')}</div></div>
+        <div class="fl"><span>Descuento para que vuelva</span>
+          <div class="row"><select name="dkind"><option value="none">Sin descuento</option><option value="percent">Porcentaje (%)</option><option value="fixed">Monto fijo ($)</option></select>
+            <input name="dvalue" type="number" min="1" placeholder="10" value="10"><label class="fl" style="gap:2px"><input name="ddays" type="number" min="1" max="90" value="7"><span class="help">días de validez</span></label></div>
+          <span class="help">Se crea un código único, de un solo uso, que solo sirve para ella. Lo ves después en Cupones.</span></div>
+        <label class="fl"><span>Asunto</span><input name="subject" value="${esc(T.subject)}"></label>
+        <label class="fl"><span>Título</span><input name="title" value="${esc(T.title)}"></label>
+        <label class="fl"><span>Texto de apertura</span><textarea name="intro" rows="3">${esc(T.intro)}</textarea></label>
+        <label class="fl"><span>Texto del descuento (solo si hay descuento)</span><textarea name="discount" rows="2">${esc(T.discount)}</textarea></label>
+        <label class="fl"><span>Texto de cierre</span><textarea name="outro" rows="2">${esc(T.outro)}</textarea></label>
+        <label class="fl"><span>Botón</span><input name="button" value="${esc(T.button)}"></label>
+        <p class="small muted">Podés usar <code>{nombre}</code> <code>{codigo}</code> <code>{descuento}</code> <code>{vence}</code>. Las prendas, los precios y el código se agregan solos con el diseño de la tienda.</p>
+        <label class="check"><input type="checkbox" name="save"> Guardar estos textos para los próximos emails</label>
+        <button class="link-btn" type="button" data-restore style="justify-self:start">Volver a los textos originales</button>
+        <p class="err" id="tmErr"></p>
+        <div class="actions"><button class="btn primary" type="submit" ${d.customer.optOut ? 'disabled' : ''}>Enviar email</button></div>
+      </form>
+      <div><div class="small muted" style="margin-bottom:6px">Vista previa · <b id="tmSub"></b><br>Las “XXXX” del código se completan al enviar: cada clienta recibe un código único.</div><iframe id="tmPrev" sandbox="" title="Vista previa del email" style="width:100%;height:76vh;border:1px solid var(--line);border-radius:8px;background:#f4efe6"></iframe></div>
+    </div></div>`;
+  $('#view').appendChild(m);
+  const f = m.querySelector('#tmForm');
+  const payload = () => ({
+    customer_id: customerId, product_ids: [...f.querySelectorAll('[name=pid]:checked')].map((c) => Number(c.value)),
+    discount: { kind: f.dkind.value, value: f.dvalue.value, days: f.ddays.value },
+    texts: Object.fromEntries(['subject', 'title', 'intro', 'discount', 'outro', 'button'].map((k) => [k, f[k].value])), save_default: f.save.checked,
+  });
+  let pt;
+  const preview = () => { clearTimeout(pt); pt = setTimeout(async () => {
+    m.querySelector('#tmErr').textContent = '';
+    try { const r = await api('/tryon/followup/preview', { method: 'POST', body: payload() }); m.querySelector('#tmPrev').srcdoc = r.html; m.querySelector('#tmSub').textContent = r.subject; }
+    catch (e) { m.querySelector('#tmErr').textContent = e.message; }
+  }, 250); };
+  f.addEventListener('input', preview); f.addEventListener('change', preview); preview();
+  m.querySelector('[data-x]').onclick = () => m.remove();
+  m.addEventListener('click', (e) => { if (e.target === m) m.remove(); });
+  m.querySelector('[data-restore]').onclick = () => { for (const [k, v] of Object.entries(d.defaults)) f[k].value = v; preview(); };
+  f.onsubmit = async (e) => {
+    e.preventDefault();
+    const btn = f.querySelector('[type=submit]'); btn.disabled = true; btn.textContent = 'Enviando…';
+    try {
+      const r = await api('/tryon/followup', { method: 'POST', body: payload() });
+      m.remove();
+      toast(String(r.status).startsWith('enviado') ? `Email enviado${r.coupon ? ` con el código ${r.coupon.code}` : ''}` : `Quedó registrado (${r.status})${r.coupon ? ` · código ${r.coupon.code}` : ''}`);
+      onSent?.();
+    } catch (err) { m.querySelector('#tmErr').textContent = err.message; btn.disabled = false; btn.textContent = 'Enviar email'; }
+  };
+}
+
 async function viewTryon() {
   const d = await api('/tryon');
   const S = d.settings, st = d.stats;
   SEG = !!d.segmentation;
   const own = S.engine === 'samadhi';
   const conv = st.month ? Math.round((st.added / st.month) * 100) : 0;
-  const tabs = [['personas', 'Quién se probó'], ['prendas', 'Prendas'], ['uso', 'Uso'], ...(isAdmin() ? [['ajustes', 'Ajustes']] : [])];
+  // "Prendas" (recortes) solo sirve para el motor propio: con Gemini o FASHN la IA usa directamente la foto del producto.
+  const tabs = [['personas', 'Quién se probó'], ...(own ? [['prendas', 'Prendas']] : []), ['uso', 'Uso'], ...(isAdmin() ? [['ajustes', 'Ajustes']] : [])];
+  if (tryTab.tab === 'prendas' && !own) tryTab.tab = 'personas';
   $('#view').innerHTML = `
     <div class="page-head"><div><h1>Probador</h1><div class="sub">${own ? 'Motor propio: corre en el celular de la clienta, sin costo por prueba y sin que su foto salga del dispositivo.' : S.engine === 'gemini' ? 'IA de Google (Gemini): genera una foto de la clienta con la prenda puesta. Se paga por imagen.' : 'Motor FASHN: imagen generada con IA, 1 crédito por prueba.'}</div></div></div>
     <div class="seg" role="tablist" style="margin-bottom:14px">${tabs.map(([k, l]) => `<button type="button" role="tab" data-ttab="${k}" aria-pressed="${tryTab.tab === k}">${l}</button>`).join('')}</div>
@@ -868,12 +932,14 @@ async function viewTryon() {
         <div class="grid g3" style="margin-bottom:14px"><div class="card kpi accent"><div class="l">Clientas que lo usaron</div><div class="v">${num(r.people.length)}</div><div class="l">en el período</div></div>
           <div class="card kpi"><div class="l">Pruebas con cuenta</div><div class="v">${num(r.people.reduce((a, x) => a + x.tries, 0))}</div><div class="l">${num(r.people.reduce((a, x) => a + x.added, 0))} sumadas a la bolsa</div></div>
           <div class="card kpi"><div class="l">Pruebas sin cuenta</div><div class="v">${num(r.anonymous)}</div><div class="l">${S.requireLogin ? 'de antes de pedir cuenta' : 'visitantes sin ingresar'}</div></div></div>
-        ${r.people.length ? `<div class="card tablewrap"><table><thead><tr><th>Clienta</th><th>Prendas que se probó</th><th class="r">Pruebas</th><th class="r">A la bolsa</th><th>Última vez</th></tr></thead><tbody>
+        ${r.people.length ? `<div class="card tablewrap"><table><thead><tr><th>Clienta</th><th>Prendas que se probó</th><th class="r">Pruebas</th><th class="r">A la bolsa</th><th>Última vez</th><th></th></tr></thead><tbody>
           ${r.people.map((x) => `<tr><td><a class="linkish" href="#cliente/${x.customer_id}"><b>${esc(x.name)}</b></a><div class="small muted">${esc(x.email)}${x.phone ? ` · ${esc(x.phone)}` : ''}</div></td>
             <td><div style="display:flex;flex-wrap:wrap;gap:8px">${x.products.slice(0, 8).map((p) => `<a href="#producto/${p.product_id}" title="${esc(p.name)} · ${p.times} ${p.times === 1 ? 'vez' : 'veces'}${p.added ? ' · la sumó a la bolsa' : ''}" style="display:flex;gap:6px;align-items:center;text-decoration:none;border:1px solid var(--line);border-radius:8px;padding:3px 8px 3px 3px;font-size:12px${p.added ? ';border-color:var(--ok)' : ''}">${p.image ? `<img class="thumb" src="${esc(thumb(p.image))}" alt="" style="width:28px;height:36px">` : ''}<span>${esc(p.name)}${p.times > 1 ? ` ×${p.times}` : ''}</span></a>`).join('')}${x.products.length > 8 ? `<span class="small muted">+${x.products.length - 8} más</span>` : ''}</div></td>
-            <td class="r n">${num(x.tries)}</td><td class="r n">${num(x.added)}</td><td class="small">${date(x.last)}</td></tr>`).join('')}</tbody></table></div>
+            <td class="r n">${num(x.tries)}</td><td class="r n">${num(x.added)}</td><td class="small">${date(x.last)}</td>
+            <td class="r"><button class="btn sm" type="button" data-mailto="${x.customer_id}">Enviar email</button>${x.mailed ? `<div class="small muted" style="margin-top:4px">Enviado ${date(x.mailed)}</div>` : ''}</td></tr>`).join('')}</tbody></table></div>
           <p class="small muted" style="margin-top:8px">Con borde verde: la prenda que después sumó a la bolsa. Las fotos de las clientas no se guardan; acá solo queda qué prenda se probó y cuándo.</p>` : '<div class="empty card">Todavía nadie usó el probador con su cuenta en este período.</div>'}`;
     };
+    $('#tpl').onclick = (e) => { const b = e.target.closest('[data-mailto]'); if (b) tryonMailer(Number(b.dataset.mailto), load); };
     let t; $('#tpq').oninput = (e) => { tryTab.pq = e.target.value; clearTimeout(t); t = setTimeout(load, 250); };
     $('#tpd').onchange = (e) => { tryTab.days = Number(e.target.value); load(); };
     load();
@@ -894,7 +960,7 @@ async function viewTryon() {
       <label class="fl" style="flex-direction:row;align-items:center;gap:10px;margin-bottom:14px"><label class="switch"><input type="checkbox" name="enabled" ${S.enabled ? 'checked' : ''}><span></span></label><span>Mostrar el probador en la tienda</span></label>
       <label class="fl" style="flex-direction:row;align-items:center;gap:10px;margin-bottom:14px"><label class="switch"><input type="checkbox" name="requireLogin" ${S.requireLogin ? 'checked' : ''}><span></span></label><span>Pedir cuenta para usarlo <span class="small muted">(así sabés quién se probó cada prenda y evitás abusos)</span></span></label>
       <div class="fl"><span>Motor</span>
-        <label class="radio-card"><input type="radio" name="engine" value="gemini" ${S.engine === 'gemini' ? 'checked' : ''}><span><b>Google Gemini (IA generativa)</b><small>Foto realista de la clienta con la prenda, en unos 10–20 segundos. Cuesta entre USD 0,03 y 0,07 por imagen. ${S.engine === 'gemini' && d.mock ? 'Falta GEMINI_API_KEY en el archivo .env.' : 'Si la IA no responde, la tienda usa el motor propio.'}</small></span></label>
+        <label class="radio-card"><input type="radio" name="engine" value="gemini" ${S.engine === 'gemini' ? 'checked' : ''}><span><b>Google Gemini (IA generativa)</b><small>Foto realista de la clienta con la prenda, en unos 10–20 segundos. Usa directamente la foto del producto: no hace falta preparar ni recortar prendas. Cuesta entre USD 0,03 y 0,07 por imagen. ${S.engine === 'gemini' && d.mock ? 'Falta GEMINI_API_KEY en el archivo .env.' : 'Si la IA no responde, la tienda usa el motor propio.'}</small></span></label>
         <label class="radio-card"><input type="radio" name="engine" value="samadhi" ${own ? 'checked' : ''}><span><b>Samadhi (propio)</b><small>Gratis e ilimitado. Calza las prendas preparadas sobre la foto o en vivo con la cámara. Es una simulación 2D: sirve para ver combinaciones y largos.</small></span></label>
         <label class="radio-card"><input type="radio" name="engine" value="fashn" ${S.engine === 'fashn' ? 'checked' : ''}><span><b>FASHN (IA generativa)</b><small>Imagen fotorrealista, unos 8 segundos y 1 crédito por prueba. ${S.engine === 'fashn' ? (d.mock ? 'Falta FASHN_API_KEY en el archivo .env.' : 'Conectado.') : ''}</small></span></label></div>
       <div class="row" style="margin-top:12px"><label class="fl"><span>FASHN · límite por día</span><input type="number" min="1" name="dailyLimit" value="${S.dailyLimit}"></label>

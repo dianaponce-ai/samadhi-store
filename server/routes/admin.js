@@ -18,6 +18,7 @@ import * as content from '../lib/content.js';
 import * as tryon from '../integrations/fashn.js';
 import * as probador from '../lib/probador.js';
 import * as clothSeg from '../lib/cloth-seg.js';
+import * as tryonMail from '../lib/tryon-mail.js';
 
 export const admin = Router();
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
@@ -544,7 +545,11 @@ admin.put('/tryon', onlyAdmin, (req, res) => {
 });
 
 // Prendas del probador propio.
-admin.get('/tryon/people', (req, res) => res.json(tryon.tryonPeople({ days: req.query.days, q: String(req.query.q || '').slice(0, 80), customerId: req.query.customer ? int(req.query.customer) : null })));
+admin.get('/tryon/people', (req, res) => { const r = tryon.tryonPeople({ days: req.query.days, q: String(req.query.q || '').slice(0, 80), customerId: req.query.customer ? int(req.query.customer) : null }); const last = tryonMail.lastFollowups(); r.people.forEach((x) => (x.mailed = last[x.customer_id] || null)); res.json(r); });
+// Email "Lo que te probaste"
+admin.get('/tryon/followup/:id', (req, res) => res.json(tryonMail.followupDraft(int(req.params.id))));
+admin.post('/tryon/followup/preview', (req, res) => res.json(tryonMail.followupPreview(req.body || {})));
+admin.post('/tryon/followup', wrap(async (req, res) => res.json(await tryonMail.sendFollowup(req.body || {}, req.admin))));
 admin.get('/tryon/garments', (req, res) => res.json(probador.adminGarments()));
 admin.put('/tryon/garments/:id', (req, res) => { probador.setGarment(int(req.params.id), req.body || {}); invalidateCatalog(); res.json({ ok: true }); });
 admin.post('/tryon/garments/:id', express_json_big, (req, res) => { const r = probador.saveGarment(int(req.params.id), req.body || {}); invalidateCatalog(); res.json(r); });

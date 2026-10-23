@@ -620,6 +620,7 @@ async function pay() {
     });
     try { localStorage.setItem('samadhi-last-order', r.token); } catch {}
     cart = []; saveCart(); updateCount();
+    try { localStorage.removeItem('samadhi-cupon'); } catch {}
     if (r.demo) { co.busy = false; co.placed = r; co.step = 'done'; await refreshPlaced(); return; }
     location.href = r.payUrl;
   } catch (e) {
@@ -665,7 +666,7 @@ function bindDrawer() {
     const iq = t.closest('[data-iq]');
     if (iq && !iq.disabled) { const [ix, d] = iq.dataset.iq.split('|').map(Number); const l = cartLines()[ix]; const c = cart.find((x) => x.variant_id === l.variant_id); c.qty = Math.min(l.max, Math.max(1, c.qty + d)); saveCart(); updateCount(); renderDrawer(); return; }
     const rm = t.closest('[data-rm]'); if (rm) { const l = cartLines()[Number(rm.dataset.rm)]; cart = cart.filter((x) => x.variant_id !== l.variant_id); saveCart(); updateCount(); renderDrawer(); return; }
-    if (t.closest('#toCheckout')) { co.step = 'co'; co.alert = ''; prefillCheckout(); renderDrawer(); $('#f-name')?.focus(); return; }
+    if (t.closest('#toCheckout')) { co.step = 'co'; co.alert = ''; prefillCheckout(); renderDrawer(); $('#f-name')?.focus(); if (co.form.coupon && !co.coupon) applyCoupon(); return; }
     if (t.closest('#backBag')) { readForm(); co.step = 'bag'; renderDrawer(); return; }
     if (t.closest('#quoteBtn')) { quote(); return; }
     if (t.closest('#couponBtn')) { applyCoupon(); return; }
@@ -691,6 +692,7 @@ let session = { staff: null, customer: null };
 const acct = { view: 'login', tab: 'pedidos', orders: null, error: '', errors: {}, busy: false, open: null };
 const DEMO_USERS = window.__SAMADHI_DEMO_USERS || null;
 function prefillCheckout() {
+  if (!co.form.coupon) { try { co.form.coupon = localStorage.getItem('samadhi-cupon') || ''; } catch {} }
   const c = session.customer;
   if (!c) return;
   for (const k of ['name', 'email', 'phone', 'dni']) if (!co.form[k] && c[k]) co.form[k] = c[k];
@@ -971,6 +973,8 @@ async function handleLinks() {
   const q = new URLSearchParams(location.search);
   const clearQ = () => { try { history.replaceState(null, '', location.pathname + location.hash); } catch {} };
   if (q.get('carrito')) { await recoverCart(q.get('carrito')); clearQ(); }
+  // Código de descuento que llega por email ("Lo que te probaste"): queda guardado y se aplica en la bolsa.
+  if (q.get('cupon')) { const k = q.get('cupon').toUpperCase().slice(0, 40); try { localStorage.setItem('samadhi-cupon', k); } catch {} co.form.coupon = k; toast(`Tu código ${k} se aplica al pagar`); clearQ(); }
   if (q.get('reset')) { acct.resetToken = q.get('reset'); acct.view = 'reset'; renderAccount(); openLayer('#acct'); clearQ(); }
 }
 
