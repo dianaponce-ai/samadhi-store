@@ -21,7 +21,12 @@ const token = () => Math.random().toString(36).slice(2) + Math.random().toString
 const slugify = (s) => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'item';
 
 // ── Estado inicial ─────────────────────────────────────
+let SEEDING = false; // mientras se arman los datos de ejemplo no sale ningún email real
 function seedState() {
+  SEEDING = true;
+  try { return seedStateInner(); } finally { SEEDING = false; }
+}
+function seedStateInner() {
   const st = {
     v: 11,
     products: SEED.products.map((p, i) => ({
@@ -235,19 +240,23 @@ function mailLog(st, key, to, ctx, at, orderId = null, force = false) {
   const subject = t.subject(c);
   st.emails.unshift({ id: ++st.ids.email, at: at || sqlDate(), template: key, to_email: to, subject, status: 'enviado (simulado)', order_id: orderId, ctx });
   if (st.emails.length > 300) st.emails.length = 300;
+  if (!SEEDING && realSend(st, key, to, ctx, force)) return 'enviando…';
   return 'enviado (simulado)';
 }
 // En la demo publicada (Vercel), algunos emails salen de verdad por la función /api/email (Resend),
 // solo a las direcciones autorizadas en DEMO_EMAIL_TO. En la vista previa local quedan simulados.
-function realSend(st, key, to, ctx) {
+// Todos los emails que genera una acción en la demo pasan por acá. Los que no están autorizados quedan simulados.
+function realSend(st, key, to, ctx, loud = false) {
   const row = st.emails[0];
   if (!/^https?:$/.test(location.protocol)) return false;
   const base = location.href.split(/[?#]/)[0].replace(/\/(index\.html)?$/, '');
-  const { subject, html } = window.__EMAIL.render(key, { store: { ...demoStore(st), url: base }, ...ctx, links: { ...LINKS, ...(ctx.links || {}) } });
+  const real = Object.fromEntries(Object.keys(LINKS).map((k) => [k, base + '/']));
+  const own = Object.fromEntries(Object.entries(ctx.links || {}).filter(([, v]) => v && v !== '#'));
+  const { subject, html } = window.__EMAIL.render(key, { store: { ...demoStore(st), url: base }, ...ctx, links: { ...real, ...own } });
   const abs = html.replace(/(src|href)="\.\/?(?!\/)/g, `$1="${base}/`).replace(/(src|href)="\/(?!\/)/g, `$1="${base}/`);
   row.status = 'enviando…';
-  fetch('/api/email', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ template: key === 'tryon_followup' ? 'tryon_followup' : 'test', to, subject, html: abs }) })
-    .then(async (r) => { const d = await r.json().catch(() => ({})); row.status = r.ok ? 'enviado' : r.status === 404 ? 'enviado (simulado)' : `no salió: ${d.error || r.status}`; })
+  fetch('/api/email', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ template: key, to, subject, html: abs }) })
+    .then(async (r) => { const d = await r.json().catch(() => ({})); row.status = r.ok ? 'enviado' : r.status === 404 || (!loud && (d.code === 'no-permitido' || d.code === 'sin-clave')) ? 'enviado (simulado)' : `no salió: ${d.error || r.status}`; })
     .catch(() => { row.status = 'enviado (simulado)'; })
     .finally(() => save());
   return true;
@@ -858,8 +867,7 @@ function adminRoute(method, path, q, b, raw) {
     if (k) { k = { ...k, code: k.code.replace('XXXX', Math.random().toString(36).slice(2, 6).toUpperCase()) }; S.coupons.push({ id: ++S.ids.coupon, code: k.code, kind: k.kind, value: k.value, min_subtotal: 0, max_uses: 1, uses: 0, starts_at: null, ends_at: k.ends_at, active: 1 }); }
     const ctx = tfCtx(d, b, k);
     if (b.save_default) S.settings.tryonMail = ctx.texts;
-    let status = mailLog(S, 'tryon_followup', d.customer.email, ctx, null, null, true);
-    if (realSend(S, 'tryon_followup', d.customer.email, ctx)) status = 'enviando…';
+    const status = mailLog(S, 'tryon_followup', d.customer.email, ctx, null, null, true);
     (S.followups = S.followups || []).push({ at: sqlDate(), customer_id: d.customer.id, coupon_code: k?.code || null, status, sent_by: me?.name || '' });
     return { status, coupon: k ? { code: k.code, ends_at: k.ends_at } : null };
   }
@@ -937,12 +945,12 @@ function adminRoute(method, path, q, b, raw) {
   if ((m = path.match(/^\/emails\/preview\/(\w+)$/))) { onlyAdmin(); if (!window.__EMAIL.TEMPLATES[m[1]]) fail(404, 'No existe ese email.'); return window.__EMAIL.render(m[1], emailSampleDemo()); }
   if (path === '/emails/test') {
     onlyAdmin();
-    if (!window.__EMAIL.TEMPLATES[b.key]) fail(404, 'No existe ese email.');
+    if (b.key !== 'all' && !window.__EMAIL.TEMPLATES[b.key]) fail(404, 'No existe ese email.');
     const { store, links, ...ctx } = emailSampleDemo();
     const to = isEmail(b.to) ? b.to.trim() : me.email;
-    mailLog(S, b.key, to, ctx, null, null, true);
-    const pending = realSend(S, b.key, to, ctx);
-    return { status: pending ? 'enviando…' : 'enviado (simulado)', pending };
+    const keys = b.key === 'all' ? Object.keys(window.__EMAIL.TEMPLATES) : [b.key];
+    const st = keys.map((k) => mailLog(S, k, to, ctx, null, null, true));
+    return { status: st[0], sent: keys.length, pending: st.includes('enviando…') };
   }
   if ((m = path.match(/^\/emails\/log\/(\d+)$/))) {
     onlyAdmin();

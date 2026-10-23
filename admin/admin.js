@@ -653,7 +653,8 @@ async function viewEmails() {
     <div class="grid g3">
       <div class="grid" style="align-content:start">${groups}</div>
       <div class="grid" style="align-content:start">
-        <div class="card form"><h2>Pruebas</h2><label class="fl"><span>Mandar las pruebas a</span><input id="testTo" type="email" value="${esc(localStorage.getItem('samadhi-test-to') || ME.email || '')}"><span class="help">Tocá “Probar” en cualquier email y llega con datos de ejemplo a esta dirección.</span></label></div>
+        <div class="card form"><h2>Pruebas</h2><label class="fl"><span>Mandar las pruebas a</span><input id="testTo" type="email" value="${esc(localStorage.getItem('samadhi-test-to') || ME.email || '')}"><span class="help">Tocá “Probar” en cualquier email y llega con datos de ejemplo a esta dirección.</span></label>
+          <div class="actions"><button class="btn primary" type="button" id="testAll">Mandarme los ${d.templates.length} emails</button><button class="btn" type="button" id="pvAll">Ver todos uno por uno</button></div></div>
         <div class="card" id="pvCard"><h2>Vista previa</h2><div id="pvBox"><p class="muted">Tocá “Ver” en cualquier email para verlo como le llega a la clienta.</p></div></div>
         <form class="card form" id="mailSet" novalidate><h2>Tiempos de los recordatorios</h2>
           <div class="row"><label class="fl"><span>Carrito: primer aviso (horas después de dejar la bolsa)</span><input type="number" min="1" name="cartReminder1Hours" value="${S.cartReminder1Hours}"></label>
@@ -671,7 +672,23 @@ async function viewEmails() {
         ${d.log.map((l) => `<tr class="click" data-log="${l.id}"><td class="small">${date(l.at)}</td><td>${esc(d.templates.find((t) => t.key === l.template)?.label || l.template)}<div class="small muted">${esc(l.subject)}</div></td><td class="small">${esc(l.to_email)}</td><td><span class="pill ${l.status === 'enviado' ? 's-delivered' : l.status.startsWith('error') ? 's-low' : 's-pending_payment'}">${esc(l.status)}</span></td></tr>`).join('')}
       </tbody></table></div>` : '<p class="muted">Todavía no se mandó ningún email.</p>'}
     </div>`;
-  const pv = async (key) => { const r = await api('/emails/preview/' + key); showEmail($('#pvBox'), r.subject, r.html); $('#pvCard').scrollIntoView({ block: 'nearest', behavior: 'smooth' }); };
+  let pvKey = null;
+  const pv = async (key) => {
+    pvKey = key;
+    const r = await api('/emails/preview/' + key);
+    const i = d.templates.findIndex((t) => t.key === key), t = d.templates[i];
+    $('#pvBox').innerHTML = `<div class="actions" style="justify-content:space-between;margin-bottom:8px"><button class="btn sm" type="button" data-pvstep="-1" ${i ? '' : 'disabled'}>← Anterior</button><span class="small muted">${i + 1} de ${d.templates.length} · <b>${esc(t.label)}</b></span><button class="btn sm" type="button" data-pvstep="1" ${i < d.templates.length - 1 ? '' : 'disabled'}>Siguiente →</button></div><div id="pvInner"></div>`;
+    showEmail($('#pvInner'), r.subject, r.html);
+    $$('[data-pvstep]').forEach((b) => (b.onclick = () => pv(d.templates[i + Number(b.dataset.pvstep)].key)));
+    $('#pvCard').scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  };
+  $('#pvAll').onclick = () => pv(d.templates[0].key);
+  $('#testAll').onclick = async () => {
+    const to = $('#testTo').value.trim(); const b = $('#testAll'); b.disabled = true; b.textContent = 'Mandando…';
+    try { localStorage.setItem('samadhi-test-to', to); } catch {}
+    try { const r = await api('/emails/test', { method: 'POST', body: { key: 'all', to } }); toast(`Listo: ${r.sent} emails de prueba para ${to}. El estado de cada uno queda en “Últimos emails”.`); setTimeout(viewEmails, r.pending ? 4000 : 0); }
+    catch (e) { toast(e.message, true); b.disabled = false; }
+  };
   $$('[data-pv]').forEach((b) => (b.onclick = () => pv(b.dataset.pv).catch((e) => toast(e.message, true))));
   $$('[data-test]').forEach((b) => (b.onclick = async () => {
     b.disabled = true;

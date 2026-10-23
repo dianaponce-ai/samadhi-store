@@ -462,10 +462,12 @@ admin.get('/emails/preview/:key', onlyAdmin, (req, res) => {
 });
 admin.post('/emails/test', onlyAdmin, wrap(async (req, res) => {
   const key = req.body?.key, to = String(req.body?.to || req.admin.email);
-  if (!TEMPLATES[key]) throw new HttpError(404, 'No existe ese email.');
+  if (key !== 'all' && !TEMPLATES[key]) throw new HttpError(404, 'No existe ese email.');
   if (!isEmail(to)) throw new HttpError(422, 'Revisá el email de destino.');
-  const status = await sendTemplate(key, to, emailSample(), { force: true });
-  res.json({ status });
+  const keys = key === 'all' ? Object.keys(TEMPLATES) : [key];
+  const out = [];
+  for (const k of keys) out.push(await sendTemplate(k, to, emailSample(), { force: true }));
+  res.json({ status: out[0], sent: keys.length, statuses: out });
 }));
 admin.get('/emails/log/:id', onlyAdmin, (req, res) => {
   const r = get('SELECT * FROM email_log WHERE id = ?', int(req.params.id));
