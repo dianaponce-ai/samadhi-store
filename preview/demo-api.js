@@ -1,6 +1,6 @@
 // Servidor de prueba para la vista previa: responde las mismas rutas que server/ pero en el navegador,
 // con el catálogo real y pedidos de ejemplo. Los cambios se guardan solo en este navegador.
-const KEY = 'samadhi-demo-v8';
+const KEY = 'samadhi-demo-v9';
 const SEED = window.SAMADHI_EMBED;
 const DEMO_USERS = window.__SAMADHI_DEMO_USERS;
 
@@ -23,7 +23,7 @@ const slugify = (s) => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]
 // ── Estado inicial ─────────────────────────────────────
 function seedState() {
   const st = {
-    v: 8,
+    v: 9,
     products: SEED.products.map((p, i) => ({
       id: p.id, slug: p.slug, name: p.name, ref_code: p.ref || '', description: p.desc || '', collection: p.collection || '',
       visible: 1, featured: p.featured ? 1 : 0, free_shipping: p.freeShipping ? 1 : 0, position: i, weight_kg: 0.5, height_cm: 5, width_cm: 30, depth_cm: 30,
@@ -263,7 +263,7 @@ function event(st, o, kind, message, at) { o.events.unshift({ id: ++st.ids.event
 
 let S;
 function load() {
-  try { const raw = localStorage.getItem(KEY); if (raw) { const st = JSON.parse(raw); if (st.v === 8 && st.products?.length === SEED.products.length) return st; } } catch {}
+  try { const raw = localStorage.getItem(KEY); if (raw) { const st = JSON.parse(raw); if (st.v === 9 && st.products?.length === SEED.products.length) return st; } } catch {}
   return seedState();
 }
 function save() { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch {} }
