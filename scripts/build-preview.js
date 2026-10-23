@@ -66,7 +66,7 @@ window.__PROBADOR = { KINDS, kindFor, isShort, loadPose, detect, prepareGarment,
 </script>
 <script type="module">
 ${read('server/lib/email-templates.js').replace(/^export /gm, '')}
-window.__EMAIL = { TEMPLATES, GROUPS, sampleContext, render, TRYON_MAIL_DEFAULTS };
+window.__EMAIL = { TEMPLATES, GROUPS, sampleContext, render, TRYON_MAIL_DEFAULTS, defaultsOf, EDIT_VARS, EDIT_FIELDS };
 </script>
 <script type="module">
 ${read('server/lib/stats-core.js').replace(/^export /gm, '')}

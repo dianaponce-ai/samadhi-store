@@ -237,7 +237,7 @@ function mailLog(st, key, to, ctx, at, orderId = null, force = false) {
   const t = window.__EMAIL.TEMPLATES[key];
   if (t.marketing && st.customers.find((c) => c.email === to)?.optOut) return 'dado de baja';
   const c = { store: demoStore(st), ...ctx, links: { ...LINKS, ...(ctx.links || {}) } };
-  const subject = t.subject(c);
+  const subject = window.__EMAIL.render(key, c, st.settings.emails.custom?.[key]).subject;
   st.emails.unshift({ id: ++st.ids.email, at: at || sqlDate(), template: key, to_email: to, subject, status: 'enviado (simulado)', order_id: orderId, ctx });
   if (st.emails.length > 300) st.emails.length = 300;
   if (!SEEDING && realSend(st, key, to, ctx, force)) return 'enviando…';
@@ -252,7 +252,7 @@ function realSend(st, key, to, ctx, loud = false) {
   const base = location.href.split(/[?#]/)[0].replace(/\/(index\.html)?$/, '');
   const real = Object.fromEntries(Object.keys(LINKS).map((k) => [k, base + '/']));
   const own = Object.fromEntries(Object.entries(ctx.links || {}).filter(([, v]) => v && v !== '#'));
-  const { subject, html } = window.__EMAIL.render(key, { store: { ...demoStore(st), url: base }, ...ctx, links: { ...real, ...own } });
+  const { subject, html } = window.__EMAIL.render(key, { store: { ...demoStore(st), url: base }, ...ctx, links: { ...real, ...own } }, st.settings.emails.custom?.[key]);
   const abs = html.replace(/(src|href)="\.\/?(?!\/)/g, `$1="${base}/`).replace(/(src|href)="\/(?!\/)/g, `$1="${base}/`);
   row.status = 'enviando…';
   fetch('/api/email', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ template: key, to, subject, html: abs }) })
@@ -306,6 +306,7 @@ const labelOf = (v) => [v.color, v.size && `Talle ${v.size}`, v.other].filter(Bo
 const staffMe = () => S.staff.find((u) => u.id === S.session.staff) || null;
 const customerMe = () => S.customers.find((c) => c.id === S.session.customer && c.password) || null;
 function tryonLogin() { if (S.settings.tryon.requireLogin !== false && !customerMe() && !S.session.staff) fail(401, 'Para usar el probador virtual ingresá a tu cuenta (o creala, es gratis).', { code: 'login' }); }
+function cleanCustom(b = {}) { const o = {}; for (const k of window.__EMAIL.EDIT_FIELDS) { const v = String(b[k] ?? '').slice(0, k === 'intro' || k === 'note' ? 3000 : 200); if (v.trim()) o[k] = v; } return o; }
 function tfDraft(id) {
   const c = S.customers.find((x) => x.id === Number(id)); if (!c) fail(404, 'No encontramos esa clienta.');
   const tried = new Map();
@@ -927,7 +928,7 @@ function adminRoute(method, path, q, b, raw) {
     onlyAdmin();
     const set = S.settings.emails, T = window.__EMAIL.TEMPLATES;
     return {
-      templates: Object.entries(T).map(([key, t]) => ({ key, label: t.label, group: t.group, to: t.to, when: t.when, marketing: !!t.marketing, enabled: !!set.enabled[key] })),
+      templates: Object.entries(T).map(([key, t]) => ({ key, label: t.label, group: t.group, to: t.to, when: t.when, marketing: !!t.marketing, enabled: !!set.enabled[key], edited: !!set.custom?.[key] })),
       groups: window.__EMAIL.GROUPS, settings: { ...set, enabled: undefined }, smtp: false, demo: true, staffFallback: '',
       log: S.emails.slice(0, 60).map(({ ctx, ...r }) => r),
     };
@@ -942,7 +943,14 @@ function adminRoute(method, path, q, b, raw) {
       staffEmails: b.staffEmails === undefined ? cur.staffEmails : String(b.staffEmails).slice(0, 500) };
     return { ok: true };
   }
-  if ((m = path.match(/^\/emails\/preview\/(\w+)$/))) { onlyAdmin(); if (!window.__EMAIL.TEMPLATES[m[1]]) fail(404, 'No existe ese email.'); return window.__EMAIL.render(m[1], emailSampleDemo()); }
+  if ((m = path.match(/^\/emails\/preview\/(\w+)$/))) { onlyAdmin(); if (!window.__EMAIL.TEMPLATES[m[1]]) fail(404, 'No existe ese email.'); return window.__EMAIL.render(m[1], emailSampleDemo(), method === 'POST' ? cleanCustom(b) : S.settings.emails.custom?.[m[1]]); }
+  if ((m = path.match(/^\/emails\/edit\/(\w+)$/))) { onlyAdmin(); if (!window.__EMAIL.TEMPLATES[m[1]]) fail(404, 'No existe ese email.'); return { defaults: window.__EMAIL.defaultsOf(m[1], emailSampleDemo()), custom: S.settings.emails.custom?.[m[1]] || {}, vars: window.__EMAIL.EDIT_VARS }; }
+  if ((m = path.match(/^\/emails\/custom\/(\w+)$/)) && method === 'PUT') {
+    onlyAdmin(); if (!window.__EMAIL.TEMPLATES[m[1]]) fail(404, 'No existe ese email.');
+    const custom = { ...(S.settings.emails.custom || {}) }, c = cleanCustom(b);
+    if (Object.keys(c).length) custom[m[1]] = c; else delete custom[m[1]];
+    S.settings.emails.custom = custom; return { ok: true, edited: !!custom[m[1]] };
+  }
   if (path === '/emails/test') {
     onlyAdmin();
     if (b.key !== 'all' && !window.__EMAIL.TEMPLATES[b.key]) fail(404, 'No existe ese email.');
@@ -955,7 +963,7 @@ function adminRoute(method, path, q, b, raw) {
   if ((m = path.match(/^\/emails\/log\/(\d+)$/))) {
     onlyAdmin();
     const r = S.emails.find((x) => x.id === Number(m[1])); if (!r) fail(404, 'No encontramos ese email.');
-    const { subject, html } = window.__EMAIL.render(r.template, { store: demoStore(S), ...r.ctx, links: { ...LINKS, ...(r.ctx.links || {}) } });
+    const { subject, html } = window.__EMAIL.render(r.template, { store: demoStore(S), ...r.ctx, links: { ...LINKS, ...(r.ctx.links || {}) } }, S.settings.emails.custom?.[r.template]);
     return { ...r, subject, html };
   }
   if (path === '/emails/run') { onlyAdmin(); return demoJobs(); }

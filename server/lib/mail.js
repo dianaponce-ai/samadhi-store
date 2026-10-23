@@ -28,10 +28,11 @@ export const EMAIL_DEFAULTS = {
   cartReminder1Hours: 1,
   cartReminder2Hours: 48,
   staffEmails: '',
+  custom: {}, // textos editados en el panel, por email
 };
 export function emailSettings() {
   const s = getSetting('emails');
-  return { ...EMAIL_DEFAULTS, ...s, enabled: { ...EMAIL_DEFAULTS.enabled, ...(s.enabled || {}) } };
+  return { ...EMAIL_DEFAULTS, ...s, enabled: { ...EMAIL_DEFAULTS.enabled, ...(s.enabled || {}) }, custom: s.custom || {} };
 }
 
 let transport = null;
@@ -65,7 +66,7 @@ export async function sendTemplate(key, to, ctx, { orderId = null, force = false
   }
   const c = { store: storeCtx(), links: {}, ...ctx };
   c.links = { shop: c.store.url, panel: `${c.store.url}/admin/`, unsubscribe: unsubscribeLink(to), ...ctx.links };
-  const { subject, html } = render(key, c);
+  const { subject, html } = render(key, c, settings.custom[key]);
   let status = 'enviado';
   const t = await getTransport();
   if (config.mail.resendKey) {

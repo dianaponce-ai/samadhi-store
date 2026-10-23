@@ -53,7 +53,7 @@ export function layout(c, { preheader = '', title, body, marketing = false }) {
     <a href="${e(c.store.url)}" style="text-decoration:none;color:${INK}"><div style="font-family:${SERIF};font-size:32px;letter-spacing:2px;line-height:1">SAMADHI</div>
     <div style="font-family:${SANS};font-size:10px;letter-spacing:9px;padding-left:9px;margin-top:6px">STYLE</div></a>
     <div style="width:1px;height:30px;background:${INK};margin:20px auto 0"></div></td></tr>
-  <tr><td align="center" style="padding:18px 32px 4px"><div style="font-family:${SERIF};font-style:italic;font-size:26px;line-height:1.25;color:${INK}">${title}</div></td></tr>
+  <tr><td align="center" style="padding:18px 32px 4px"><div style="font-family:${SERIF};font-style:italic;font-size:26px;line-height:1.25;color:${INK}">${c.__title || title}</div></td></tr>
   <tr><td style="padding:18px 36px 34px">${body}</td></tr>
   <tr><td align="center" style="padding:22px 28px 30px;border-top:1px solid ${SAND}">
     <div style="font-family:${SERIF};font-style:italic;font-size:16px;color:${INK}">Lo auténtico también se viste.</div>
@@ -302,8 +302,49 @@ export function sampleContext(store, sample = {}) {
   };
 }
 
-export function render(key, c) {
+// ── Textos editables desde el panel ──────────────────────
+// Cada email puede tener su asunto, título, texto principal, botón y nota final propios.
+// Variables: {nombre} {pedido} {total} {tienda}
+export const EDIT_VARS = { '{nombre}': 'Nombre de la clienta', '{pedido}': 'Número de pedido', '{total}': 'Total del pedido', '{tienda}': 'Nombre de la tienda' };
+export const EDIT_FIELDS = ['subject', 'title', 'intro', 'button', 'note'];
+const P_OPEN = `<p style="margin:0 0 14px;font-family:${SANS};font-size:15px;line-height:1.65;color:${INK}">`;
+const SMALL_OPEN = `<p style="margin:14px 0 0;font-family:${SANS};font-size:12px;line-height:1.6;color:${MUTED}">`;
+function varsOf(c) {
+  return { '{nombre}': String(c.name || '').trim().split(/\s+/)[0] || '', '{pedido}': c.order?.number || '', '{total}': c.order ? money(c.order.total) : '', '{tienda}': c.store?.name || 'Samadhi Style' };
+}
+const fillV = (t, v) => String(t || '').replace(/\{(nombre|pedido|total|tienda)\}/g, (m) => v[m] ?? m);
+const asHtml = (t) => e(t).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/\n/g, '<br>');
+/** Reemplaza la primera aparición de un bloque (párrafo, nota) por un texto nuevo. */
+function swapFirst(html, open, inner) {
+  const i = html.indexOf(open);
+  if (i < 0) return html;
+  const j = html.indexOf('</p>', i);
+  return html.slice(0, i + open.length) + inner + html.slice(j);
+}
+export function render(key, c, custom = {}) {
   const t = TEMPLATES[key];
   if (!t) throw new Error(`No existe la plantilla ${key}`);
-  return { subject: t.subject(c), html: t.html(c) };
+  const v = varsOf(c);
+  const k = custom || {};
+  const title = k.title?.trim() ? fillV(k.title, v) : null;
+  let html = t.html(title ? { ...c, __title: asHtml(title) } : c);
+  if (k.intro?.trim()) {
+    // El texto principal puede tener varios párrafos (separados por una línea en blanco).
+    const paras = fillV(k.intro, v).split(/\n{2,}/).map(asHtml);
+    html = swapFirst(html, P_OPEN, paras.join(`</p>${P_OPEN}`));
+  }
+  if (k.button?.trim()) html = html.replace(/(<a [^>]*text-transform:uppercase">)([^<]*)(<\/a><\/td><\/tr><\/table>)/, (m, a, txt, z) => a + e(fillV(k.button, v)) + z);
+  if (k.note !== undefined && k.note !== null && k.note !== '') html = html.includes(SMALL_OPEN) ? swapFirst(html, SMALL_OPEN, asHtml(fillV(k.note, v))) : html.replace(/(<tr><td style="padding:18px 36px 34px">)([\s\S]*?)(<\/td><\/tr>)/, (m, a, body, z) => a + body + SMALL_OPEN + asHtml(fillV(k.note, v)) + '</p>' + z);
+  const subject = k.subject?.trim() ? fillV(k.subject, v) : t.subject(c);
+  return { subject, html };
+}
+/** Textos originales de cada email (para mostrarlos como guía en el editor). */
+export function defaultsOf(key, c) {
+  const t = TEMPLATES[key];
+  const html = t.html(c);
+  const strip = (s) => s.replace(/<br>/g, '\n').replace(/<[^>]+>/g, '').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").trim();
+  const grab = (open) => { const i = html.indexOf(open); return i < 0 ? '' : strip(html.slice(i + open.length, html.indexOf('</p>', i))); };
+  const title = (html.match(/font-style:italic;font-size:26px;line-height:1.25;color:#191816">([\s\S]*?)<\/div>/) || [])[1] || '';
+  const button = (html.match(/text-transform:uppercase">([^<]*)<\/a><\/td><\/tr><\/table>/) || [])[1] || '';
+  return { subject: t.subject(c), title: strip(title), intro: grab(P_OPEN), button: strip(button), note: grab(SMALL_OPEN), hasButton: !!button };
 }

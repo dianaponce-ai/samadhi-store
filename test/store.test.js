@@ -351,3 +351,13 @@ test('Gemini: arma el pedido con las dos fotos y la indicación', async () => {
   try { const r = await geminiTryOn({ apiKey: 'k', person: 'data:image/jpeg;base64,AA==', personSize: [600, 900], garment: { mimeType: 'image/png', data: 'AA==' }, kind: 'full' }); assert.equal(r.image, 'data:image/png;base64,iVBOR'); }
   finally { globalThis.fetch = real; }
 });
+
+test('emails: textos editados desde el panel (asunto, título, texto, botón y nota)', async () => {
+  const m = await import('../server/lib/email-templates.js');
+  const c = m.sampleContext({ name: 'Samadhi Style', url: 'https://x', whatsapp: '1', instagram: 's' });
+  const r = m.render('order_shipped', c, { subject: 'Ya salió {pedido}, {nombre}', title: '¡En camino!', intro: 'Hola {nombre}!\n\nTu pedido **{pedido}** ya viaja.', button: 'Seguir envío', note: 'Gracias' });
+  assert.equal(r.subject, 'Ya salió S-1042, Lucía');
+  for (const t of ['¡En camino!', '<b>S-1042</b>', 'Seguir envío', 'Gracias']) assert.ok(r.html.includes(t), t);
+  assert.ok(!r.html.includes('despachamos tu pedido'), 'el texto original se reemplaza');
+  assert.equal(m.render('order_shipped', c).subject, m.render('order_shipped', c, {}).subject, 'sin cambios, queda el original');
+});

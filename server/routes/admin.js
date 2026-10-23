@@ -420,7 +420,7 @@ admin.post('/me/password', (req, res) => {
 });
 
 // ── Emails automáticos y carritos ──────────────────────────
-import { TEMPLATES, GROUPS, sampleContext, render as renderEmail } from '../lib/email-templates.js';
+import { TEMPLATES, GROUPS, sampleContext, render as renderEmail, defaultsOf, EDIT_VARS, EDIT_FIELDS } from '../lib/email-templates.js';
 import { emailSettings, sendTemplate, recentLog, storeCtx } from '../lib/mail.js';
 import { listCarts } from '../lib/carts.js';
 
@@ -440,7 +440,7 @@ function emailSample() {
 admin.get('/emails', onlyAdmin, (req, res) => {
   const s = emailSettings();
   res.json({
-    templates: Object.entries(TEMPLATES).map(([key, t]) => ({ key, label: t.label, group: t.group, to: t.to, when: t.when, marketing: !!t.marketing, enabled: !!s.enabled[key] })),
+    templates: Object.entries(TEMPLATES).map(([key, t]) => ({ key, label: t.label, group: t.group, to: t.to, when: t.when, marketing: !!t.marketing, enabled: !!s.enabled[key], edited: !!s.custom[key] })),
     groups: GROUPS, settings: { ...s, enabled: undefined }, smtp: !!(config.mail.smtpUrl || config.mail.resendKey), staffFallback: config.mail.storeNotify || '', log: recentLog(60),
   });
 });
@@ -453,12 +453,30 @@ admin.put('/emails', onlyAdmin, (req, res) => {
     paymentReminderHours: num('paymentReminderHours', 1, 168), transferReminderHoursBefore: num('transferReminderHoursBefore', 1, 72),
     pickupReminderDays: num('pickupReminderDays', 1, 30), cartReminder1Hours: num('cartReminder1Hours', 1, 72), cartReminder2Hours: num('cartReminder2Hours', 2, 240),
     staffEmails: b.staffEmails === undefined ? cur.staffEmails : String(b.staffEmails).slice(0, 500),
+    custom: cur.custom,
   });
   res.json({ ok: true });
 });
 admin.get('/emails/preview/:key', onlyAdmin, (req, res) => {
   if (!TEMPLATES[req.params.key]) throw new HttpError(404, 'No existe ese email.');
-  res.json(renderEmail(req.params.key, emailSample()));
+  res.json(renderEmail(req.params.key, emailSample(), emailSettings().custom[req.params.key]));
+});
+// Editor de textos de cada email
+admin.get('/emails/edit/:key', onlyAdmin, (req, res) => {
+  if (!TEMPLATES[req.params.key]) throw new HttpError(404, 'No existe ese email.');
+  res.json({ defaults: defaultsOf(req.params.key, emailSample()), custom: emailSettings().custom[req.params.key] || {}, vars: EDIT_VARS });
+});
+const cleanCustom = (b = {}) => { const o = {}; for (const k of EDIT_FIELDS) { const v = String(b[k] ?? '').slice(0, k === 'intro' || k === 'note' ? 3000 : 200); if (v.trim()) o[k] = v; } return o; };
+admin.post('/emails/preview/:key', onlyAdmin, (req, res) => {
+  if (!TEMPLATES[req.params.key]) throw new HttpError(404, 'No existe ese email.');
+  res.json(renderEmail(req.params.key, emailSample(), cleanCustom(req.body)));
+});
+admin.put('/emails/custom/:key', onlyAdmin, (req, res) => {
+  if (!TEMPLATES[req.params.key]) throw new HttpError(404, 'No existe ese email.');
+  const s = getSetting('emails'); const custom = { ...(s.custom || {}) }; const c = cleanCustom(req.body);
+  if (Object.keys(c).length) custom[req.params.key] = c; else delete custom[req.params.key];
+  setSetting('emails', { ...s, custom });
+  res.json({ ok: true, edited: !!custom[req.params.key] });
 });
 admin.post('/emails/test', onlyAdmin, wrap(async (req, res) => {
   const key = req.body?.key, to = String(req.body?.to || req.admin.email);

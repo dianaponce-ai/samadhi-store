@@ -642,20 +642,20 @@ async function viewEmails() {
     return `<div class="card"><h2>${esc(label)}</h2><div class="mail-list">${list.map((t) => `
       <div class="mail-row">
         <label class="switch" title="${t.enabled ? 'Activado' : 'Desactivado'}"><input type="checkbox" data-en="${t.key}" ${t.enabled ? 'checked' : ''} aria-label="Enviar ${esc(t.label)}"><span></span></label>
-        <div class="mail-meta"><b>${esc(t.label)}</b><span class="small muted">${esc(t.when)} · Para: ${esc(t.to)}${t.marketing ? ' · con link de baja' : ''}</span></div>
-        <div class="actions"><button class="btn sm" data-pv="${t.key}">Ver</button><button class="btn sm" data-test="${t.key}">Probar</button></div>
+        <div class="mail-meta"><b>${esc(t.label)}${t.edited ? ' <span class="pill s-paid">editado</span>' : ''}</b><span class="small muted">${esc(t.when)} · Para: ${esc(t.to)}${t.marketing ? ' · con link de baja' : ''}</span></div>
+        <div class="actions"><button class="btn sm" data-pv="${t.key}">Ver</button><button class="btn sm" data-ed="${t.key}">Editar</button><button class="btn sm" data-test="${t.key}">Probar</button></div>
       </div>`).join('')}</div></div>`;
   }).join('');
   $('#view').innerHTML = `
     <div class="page-head"><div><h1>Emails automáticos</h1><div class="sub">${d.templates.filter((t) => t.enabled).length} de ${d.templates.length} activados · se mandan solos según lo que pasa en la tienda</div></div>
       <div class="actions"><button class="btn" id="runJobs">Revisar recordatorios ahora</button></div></div>
     ${d.smtp ? '' : `<div class="notice" style="margin-bottom:14px">${d.demo ? 'Vista previa en Vercel: los emails automáticos quedan en el historial. Las pruebas y “Lo que te probaste” salen de verdad solo a los emails autorizados en DEMO_EMAIL_TO, si está cargada la clave de Resend.' : 'Todavía falta configurar el envío (RESEND_API_KEY o SMTP_URL en el archivo .env). Mientras tanto los emails se generan y quedan en el historial, pero no salen.'}</div>`}
-    <div class="grid g3">
+    <div class="grid g2" style="grid-template-columns:minmax(0,1fr) minmax(0,1.25fr)">
       <div class="grid" style="align-content:start">${groups}</div>
       <div class="grid" style="align-content:start">
         <div class="card form"><h2>Pruebas</h2><label class="fl"><span>Mandar las pruebas a</span><input id="testTo" type="email" value="${esc(localStorage.getItem('samadhi-test-to') || ME.email || '')}"><span class="help">Tocá “Probar” en cualquier email y llega con datos de ejemplo a esta dirección.</span></label>
           <div class="actions"><button class="btn primary" type="button" id="testAll">Mandarme los ${d.templates.length} emails</button><button class="btn" type="button" id="pvAll">Ver todos uno por uno</button></div></div>
-        <div class="card" id="pvCard"><h2>Vista previa</h2><div id="pvBox"><p class="muted">Tocá “Ver” en cualquier email para verlo como le llega a la clienta.</p></div></div>
+        <div class="card" id="pvCard"><h2>Vista previa y edición</h2><div id="pvBox"><p class="muted">Tocá “Ver” en cualquier email para verlo como le llega a la clienta.</p></div></div>
         <form class="card form" id="mailSet" novalidate><h2>Tiempos de los recordatorios</h2>
           <div class="row"><label class="fl"><span>Carrito: primer aviso (horas después de dejar la bolsa)</span><input type="number" min="1" name="cartReminder1Hours" value="${S.cartReminder1Hours}"></label>
             <label class="fl"><span>Carrito: último aviso (horas después de dejar la bolsa)</span><input type="number" min="2" name="cartReminder2Hours" value="${S.cartReminder2Hours}"></label></div>
@@ -683,6 +683,32 @@ async function viewEmails() {
     $('#pvCard').scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   };
   $('#pvAll').onclick = () => pv(d.templates[0].key);
+  // Editor: cambia asunto, título, texto principal, botón y nota final; los datos del pedido y el diseño se agregan solos.
+  const edit = async (key) => {
+    const t = d.templates.find((x) => x.key === key);
+    if (key === 'tryon_followup') { $('#pvBox').innerHTML = '<p class="muted">Este email se edita al mandarlo, desde Probador → Quién se probó → Enviar email (ahí también podés guardar los textos por defecto).</p>'; $('#pvCard').scrollIntoView({ block: 'nearest', behavior: 'smooth' }); return; }
+    const r = await api('/emails/edit/' + key);
+    const D = r.defaults, C = r.custom;
+    const field = (k, label, rows = 0) => rows
+      ? `<label class="fl"><span>${label}</span><textarea name="${k}" rows="${rows}" placeholder="${esc(D[k] || '')}">${esc(C[k] || '')}</textarea></label>`
+      : `<label class="fl"><span>${label}</span><input name="${k}" value="${esc(C[k] || '')}" placeholder="${esc(D[k] || '')}"></label>`;
+    $('#pvBox').innerHTML = `<form class="form" id="edForm">
+        <p class="small muted" style="margin:0"><b>${esc(t.label)}</b> · ${esc(t.when)}<br>Lo que dejes vacío usa el texto original (se ve en gris). Los productos, totales, datos de pago y el diseño se agregan solos.</p>
+        ${field('subject', 'Asunto')}${field('title', 'Título')}${field('intro', 'Texto principal', 4)}
+        ${D.hasButton ? field('button', 'Texto del botón') : ''}${field('note', 'Nota final (letra chica)', 2)}
+        <p class="small muted" style="margin:0">Variables: ${Object.entries(r.vars).map(([k, v]) => `<code title="${esc(v)}">${esc(k)}</code>`).join(' ')} · <code>**así**</code> para negrita · una línea en blanco separa párrafos.</p>
+        <div class="actions"><button class="btn primary" type="submit">Guardar</button><button class="btn" type="button" id="edReset">Volver al original</button><button class="btn" type="button" id="edTest">Probar este</button></div>
+      </form><div class="small muted" style="margin:12px 0 6px">Vista previa con datos de ejemplo</div><div id="edPv"></div>`;
+    const f = $('#edForm');
+    const vals = () => Object.fromEntries(['subject', 'title', 'intro', 'button', 'note'].filter((k) => f[k]).map((k) => [k, f[k].value]));
+    let pt; const live = () => { clearTimeout(pt); pt = setTimeout(async () => { const p = await api('/emails/preview/' + key, { method: 'POST', body: vals() }); showEmail($('#edPv'), p.subject, p.html); }, 250); };
+    f.addEventListener('input', live); live();
+    f.onsubmit = async (e) => { e.preventDefault(); try { await api('/emails/custom/' + key, { method: 'PUT', body: vals() }); toast('Email guardado'); t.edited = Object.values(vals()).some((v) => v.trim()); } catch (err) { toast(err.message, true); } };
+    $('#edReset').onclick = async () => { await api('/emails/custom/' + key, { method: 'PUT', body: {} }); toast('Volvió al texto original'); t.edited = false; edit(key); };
+    $('#edTest').onclick = async () => { await api('/emails/custom/' + key, { method: 'PUT', body: vals() }); const to = $('#testTo').value.trim(); const r2 = await api('/emails/test', { method: 'POST', body: { key, to } }); toast(r2.status === 'enviado' ? `Te lo mandamos a ${to}` : `Generado: ${r2.status}`); };
+    $('#pvCard').scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  };
+  $$('[data-ed]').forEach((b) => (b.onclick = () => edit(b.dataset.ed).catch((e) => toast(e.message, true))));
   $('#testAll').onclick = async () => {
     const to = $('#testTo').value.trim(); const b = $('#testAll'); b.disabled = true; b.textContent = 'Mandando…';
     try { localStorage.setItem('samadhi-test-to', to); } catch {}
