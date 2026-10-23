@@ -264,6 +264,7 @@ function renderCats() {
   $('#footCats').innerHTML = top.slice(0, 7).map((c) => `<li><button data-cat="${esc(c.slug)}">${esc(c.name)}</button></li>`).join('');
   $('#mnav').innerHTML = `<div class="caps" style="color:var(--suave)">Menú</div>` +
     [['all', 'Tienda'], ['new', "Colección SS'27"], ['sale', 'Sale']].map(([k, l]) => `<button data-cat="${k}">${l}</button>`).join('') +
+    (CAT.tryon?.enabled ? '<button data-tryon-open>Probador</button>' : '') + '<a class="mnav-link" href="#nosotras">Nosotras</a>' +
     `<div class="caps" style="color:var(--suave);margin-top:14px">Categorías</div>` + top.map((c) => `<button class="sm" data-cat="${esc(c.slug)}">${esc(c.name)}</button>`).join('');
 }
 function setCat(k, scroll = true) {
@@ -323,8 +324,11 @@ function openProduct(slug, push = true) {
   if (p.sizes.length === 1 && !avail(variantFor(p, cur.color, cur.size, cur.other) || {})) cur.size = '';
   pdp.quote = null; pdp.quoteErr = '';
   renderModal();
-  openLayer('#modal');
-  $('#modal').scrollTop = 0;
+  closeLayers();
+  if (!document.body.classList.contains('pdp-mode')) { pdpReturnY = window.scrollY; lastFocus = document.activeElement; }
+  document.body.classList.add('pdp-mode');
+  $('#modal').classList.add('on');
+  window.scrollTo({ top: 0, behavior: 'instant' });
   setTimeout(() => $('#pName')?.focus({ preventScroll: true }), 80); // el foco va al nombre, no a la miga de pan
   if (push) safeHash(`#p/${slug}`);
   document.title = `${p.name} · Samadhi Style`;
@@ -360,7 +364,6 @@ function renderModal() {
   $('#modal').innerHTML = `
     <div class="pdp-top">
       <nav class="crumbs caps" aria-label="Estás en"><button type="button" data-close>Inicio</button>${cat ? `<span>/</span><button type="button" data-cat="${cat.id}">${esc(cat.name)}</button>` : ''}<span>/</span><span aria-current="page">${esc(p.name)}</span></nav>
-      <button class="close" data-close aria-label="Cerrar"><svg viewBox="0 0 16 16"><path d="M2 2l12 12M14 2L2 14"/></svg></button>
     </div>
     <div class="pdp">
       <div class="pdp-gallery ${images.length === 1 ? 'one' : ''}" aria-label="Fotos de ${esc(p.name)}">
@@ -433,9 +436,9 @@ function bindModal() {
     if (t.closest('#addBtn') && !t.closest('#addBtn').disabled) {
       const v = variantFor(cur.p, cur.color, cur.size, cur.other);
       addToCart(v.id, cur.qty);
-      closeAll(); openCart(); return;
+      closeLayers(); openCart(); return;
     }
-    if (t.closest('[data-tryon]')) { const p = cur.p, img = cur.img; closeAll(); openTryon(p, img); return; }
+    if (t.closest('[data-tryon]')) { const p = cur.p, img = cur.img; closeLayers(); openTryon(p, img); return; }
     if (t.closest('[data-fav]')) { const id = cur.p.id; if (favs.has(id)) favs.delete(id); else favs.add(id); saveFavs(); toast(favs.has(id) ? 'Agregado a tus favoritos' : 'Sacado de tus favoritos'); renderModal(); return; }
     if (t.closest('[data-guide]')) { const d = $('#pdpMeasures'); if (d) { d.open = true; d.scrollIntoView({ behavior: 'smooth', block: 'center' }); } return; }
     if (t.closest('[data-add-bar]')) { const b = $('#addBtn'); if (b && !b.disabled) b.click(); else $('#modal .pdp-info .sizes, #modal .pdp-info .swatches')?.scrollIntoView({ behavior: 'smooth', block: 'center' }); return; }
@@ -826,12 +829,30 @@ function bindAccount() {
 function safeHash(h) { try { history.replaceState(null, '', h || location.pathname + location.search); } catch {} }
 let lastFocus = null;
 function openLayer(sel) { lastFocus = document.activeElement; $('#scrim').classList.add('on'); $(sel).classList.add('on'); document.body.style.overflow = 'hidden'; setTimeout(() => $(sel).querySelector('button, input')?.focus({ preventScroll: true }), 50); }
-function closeAll() {
-  ['#modal', '#drawer', '#mnav', '#scrim', '#acct', '#track', '#legal', '#tryon'].forEach((s) => $(s).classList.remove('on'));
+let pdpReturnY = 0;
+const LAYERS = ['#drawer', '#mnav', '#scrim', '#acct', '#track', '#legal', '#tryon'];
+const layerOpen = () => LAYERS.some((s) => $(s).classList.contains('on'));
+// Cierra bolsa, menú y paneles, pero deja abierta la ficha de producto si estaba.
+function closeLayers() {
+  const was = layerOpen();
+  LAYERS.forEach((s) => $(s).classList.remove('on'));
   if (typeof stopLive === 'function') stopLive();
   document.body.style.overflow = '';
+  if (was && document.body.classList.contains('pdp-mode')) $('#pName')?.focus({ preventScroll: true });
+}
+// Sale de la ficha de producto y vuelve a donde estaba la clienta.
+function closeProduct() {
+  if (!document.body.classList.contains('pdp-mode')) return false;
+  document.body.classList.remove('pdp-mode');
+  $('#modal').classList.remove('on');
   if (location.hash.startsWith('#p/')) safeHash('');
   document.title = 'Samadhi Style';
+  window.scrollTo({ top: pdpReturnY, behavior: 'instant' });
+  return true;
+}
+function closeAll() {
+  closeLayers();
+  closeProduct();
   lastFocus?.focus?.({ preventScroll: true });
 }
 let tt;
@@ -851,6 +872,12 @@ function route() {
 
 function bindGlobal() {
   document.addEventListener('click', (e) => {
+    // Enlaces a secciones de la home (Nosotras, Preguntas frecuentes): si está abierta una ficha, primero vuelve a la home.
+    const anchor = e.target.closest('a[href^="#"]');
+    if (anchor && anchor.getAttribute('href').length > 1 && !anchor.getAttribute('href').startsWith('#p/')) {
+      const target = document.getElementById(anchor.getAttribute('href').slice(1));
+      if (target) { e.preventDefault(); closeAll(); requestAnimationFrame(() => target.scrollIntoView({ behavior: reduced ? 'auto' : 'smooth' })); return; }
+    }
     const c = e.target.closest('[data-cat]');
     if (c) { closeAll(); if (c.dataset.clear) { st.q = ''; $('#q').value = ''; } setCat(c.dataset.cat); return; }
     const go = e.target.closest('[data-go]');
@@ -875,8 +902,8 @@ function bindGlobal() {
   $('#bagBtn').addEventListener('click', () => { co.step = 'bag'; openCart(); });
   $('#menuBtn').addEventListener('click', () => openLayer('#mnav'));
   $('#logoBtn').addEventListener('click', (e) => { e.preventDefault(); closeAll(); st.cat = 'all'; renderCats(); renderGrid(); window.scrollTo({ top: 0, behavior: 'smooth' }); });
-  $('#scrim').addEventListener('click', closeAll);
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeAll(); });
+  $('#scrim').addEventListener('click', closeLayers);
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { if (layerOpen()) closeLayers(); else closeAll(); } });
   window.addEventListener('scroll', onScroll, { passive: true });
 }
 

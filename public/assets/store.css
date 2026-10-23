@@ -34,8 +34,8 @@ h1, h2, h3 { font-weight: 400; margin: 0; text-wrap: balance; }
 .announce .caps { font-size: 10px; letter-spacing: .34em; }
 body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 60; background: var(--marfil); }
 header.top { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 50; background: color-mix(in srgb, var(--marfil) 92%, transparent); backdrop-filter: blur(10px); border-bottom: 1px solid var(--linea); }
-.top .wrap { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; padding-block: 14px; gap: 16px; }
-.nav { display: flex; gap: 28px; }
+.top .wrap { display: grid; grid-template-columns: auto auto 1fr; align-items: center; padding-block: 14px; gap: clamp(14px, 2.4vw, 32px); }
+.nav { display: none; }
 .nav button, .nav a { font-size: 11px; letter-spacing: .28em; text-transform: uppercase; padding-block: 4px; border-bottom: 1px solid transparent; text-decoration: none; }
 .nav button:hover, .nav a:hover { border-color: var(--tinta); }
 .logo { display: flex; flex-direction: column; align-items: center; line-height: 1; text-decoration: none; }
@@ -45,7 +45,9 @@ header.top { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 50; 
 .icon-btn { display: inline-flex; align-items: center; gap: 8px; font-size: 11px; letter-spacing: .24em; text-transform: uppercase; }
 .icon-btn svg { width: 20px; height: 20px; stroke: currentColor; fill: none; stroke-width: 1.1; }
 .bag-count { min-width: 18px; height: 18px; border-radius: 9px; background: var(--tinta); color: var(--marfil); font-size: 10px; letter-spacing: 0; display: inline-grid; place-items: center; padding: 0 5px; }
-.menu-btn { display: none; }
+.menu-btn { display: inline-flex; }
+.icon-btn .lbl { display: none; }
+.tools .icon-btn { padding: 4px; }
 
 /* ── Banners verticales con parallax ──────────── */
 .hero { position: relative; height: clamp(560px, 84vh, 880px); overflow: hidden; background: var(--negro); color: var(--marfil); isolation: isolate; }
@@ -188,8 +190,11 @@ footer a { text-decoration: none; }
 /* ── Capas: ficha, bolsa, menú ────────────────── */
 .scrim { position: fixed; inset: 0; background: rgba(25,24,22,.4); z-index: 80; opacity: 0; pointer-events: none; transition: opacity .3s; }
 .scrim.on { opacity: 1; pointer-events: auto; }
-.modal { position: fixed; z-index: 90; inset: 0; overflow-y: auto; overscroll-behavior: contain; background: var(--papel); transform: translateY(14px); opacity: 0; pointer-events: none; transition: opacity .35s var(--ease), transform .35s var(--ease); }
-.modal.on { opacity: 1; transform: none; pointer-events: auto; }
+/* La ficha de producto es una página dentro del sitio: se ve entre el encabezado y el pie. */
+.modal { display: none; background: var(--papel); }
+body.pdp-mode .modal { display: block; animation: pdpIn .35s var(--ease); }
+body.pdp-mode > section, body.pdp-mode > nav.cats { display: none; }
+@keyframes pdpIn { from { opacity: 0; transform: translateY(10px); } }
 .gallery { display: grid; grid-template-columns: 64px 1fr; gap: 10px; padding: 14px; background: var(--marfil); min-width: 0; }
 .gallery .thumbs { display: flex; flex-direction: column; gap: 8px; }
 .gallery .thumbs button { aspect-ratio: 3 / 4; overflow: hidden; opacity: .55; transition: opacity .2s; background: var(--arena); }
@@ -298,7 +303,7 @@ form.co { display: grid; gap: 14px; padding-block: 12px; }
 .toast.on { opacity: 1; transform: translate(-50%, 0); }
 .mnav { position: fixed; inset: 0 auto 0 0; width: min(330px, 86%); background: var(--papel); z-index: 90; transform: translateX(-100%); transition: transform .35s var(--ease); padding: calc(30px + env(safe-area-inset-top, 0px)) 28px 30px max(28px, env(safe-area-inset-left, 0px)); display: flex; flex-direction: column; gap: 14px; overflow: auto; }
 .mnav.on { transform: none; }
-.mnav button { text-align: left; font-family: var(--display); font-size: 28px; }
+.mnav button, .mnav .mnav-link { text-align: left; font-family: var(--display); font-size: 28px; text-decoration: none; }
 .mnav .sm { font-family: var(--sans); font-size: 12px; letter-spacing: .2em; text-transform: uppercase; }
 .skel { background: linear-gradient(90deg, var(--arena) 0%, #ece3d5 50%, var(--arena) 100%); background-size: 200% 100%; animation: skel 1.4s infinite; }
 @keyframes skel { to { background-position: -200% 0; } }
@@ -308,9 +313,6 @@ form.co { display: grid; gap: 14px; padding-block: 12px; }
   footer .wrap { grid-template-columns: 1fr 1fr; }
 }
 @media (max-width: 800px) {
-  .nav { display: none; }
-  .menu-btn { display: inline-flex; }
-  .top .wrap { grid-template-columns: auto 1fr auto; }
   .logo .w { font-size: 24px; }
   .hero { height: clamp(520px, 78vh, 720px); }
   .slide .copy { max-width: calc(100% - 90px); padding-left: 0; bottom: 64px; }
@@ -507,8 +509,7 @@ footer ul button { font-size: 13px; text-align: left; }
 }
 
 /* Ficha de producto */
-.pdp-top { position: sticky; top: 0; z-index: 4; display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 14px clamp(16px, 3vw, 40px); background: color-mix(in srgb, var(--papel) 92%, transparent); backdrop-filter: blur(8px); border-bottom: 1px solid var(--linea); }
-.pdp-top .close { position: static; background: transparent; }
+.pdp-top { display: flex; align-items: center; gap: 16px; padding: 16px clamp(16px, 3vw, 40px); }
 .crumbs { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: 10px; color: var(--suave); min-width: 0; }
 .crumbs button { letter-spacing: inherit; text-transform: inherit; color: inherit; }
 .crumbs button:hover { color: var(--tinta); }
@@ -520,7 +521,7 @@ footer ul button { font-size: 13px; text-align: left; }
 .pdp-gallery img, .pdp-gallery .ph { width: 100%; height: 100%; object-fit: cover; display: block; }
 .pdp-dots { display: none; }
 .pdp-info { min-width: 0; padding-top: 34px; }
-.pdp-sticky { position: sticky; top: 84px; display: grid; gap: 18px; }
+.pdp-sticky { position: sticky; top: 100px; display: grid; gap: 18px; }
 .pdp-tags { display: flex; gap: 6px; min-height: 18px; }
 .tag { font-size: 9px; letter-spacing: .24em; text-transform: uppercase; border: 1px solid var(--tinta); padding: 3px 8px; }
 .tag.off { background: var(--oliva); color: var(--marfil); border-color: var(--oliva); }
@@ -555,7 +556,7 @@ footer ul button { font-size: 13px; text-align: left; }
 .pdp-acc details[open] summary::after { content: "−"; }
 .pdp-acc details > div { padding: 0 0 18px; font-size: 14px; line-height: 1.75; color: #3b3832; }
 .pdp-ref { font-size: 10px; color: var(--suave); }
-.pdp-related { padding: 30px clamp(16px, 3vw, 40px) 120px; border-top: 1px solid var(--linea); }
+.pdp-related { padding: 30px clamp(16px, 3vw, 40px) 60px; border-top: 1px solid var(--linea); }
 .pdp-related h4 { font-size: 11px; font-weight: 400; margin-bottom: 18px; }
 .pdp-rel-row { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(200px, 1fr); gap: 16px; overflow-x: auto; scroll-snap-type: x mandatory; padding-bottom: 8px; }
 .pdp-rel-row .card { scroll-snap-align: start; }
