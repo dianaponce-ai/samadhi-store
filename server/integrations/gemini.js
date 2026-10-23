@@ -55,9 +55,10 @@ export async function geminiTryOn({ apiKey, model = GEMINI_DEFAULT_MODEL, person
   } catch (err) { const e = new Error('No pudimos conectar con el probador. Probá de nuevo en un momento.'); e.code = 'servicio'; e.detail = err.message; throw e; }
   if (!r.ok) {
     const msg = d.error?.message || '';
-    const keyProblem = r.status === 401 || r.status === 403 || /api key|API_KEY|permission|billing/i.test(msg);
-    const e = new Error(r.status === 429 ? 'El probador está con mucha demanda. Probá en unos segundos.' : keyProblem ? 'La clave de Gemini no es válida o no tiene permiso para generar imágenes.' : 'El probador no está disponible ahora. Probá más tarde.');
-    e.code = keyProblem ? 'clave' : 'servicio'; e.status = r.status; e.detail = `${r.status} ${d.error?.status || ''} ${msg}`.trim().slice(0, 300); throw e;
+    const noCredit = r.status === 402 || /prepayment|credits are depleted|billing account/i.test(msg);
+    const keyProblem = !noCredit && (r.status === 401 || r.status === 403 || /api key|API_KEY|permission/i.test(msg));
+    const e = new Error(noCredit ? 'La cuenta de Google (Gemini) se quedó sin saldo. Cargá crédito en Google AI Studio.' : r.status === 429 ? 'El probador está con mucha demanda. Probá en unos segundos.' : keyProblem ? 'La clave de Gemini no es válida o no tiene permiso para generar imágenes.' : 'El probador no está disponible ahora. Probá más tarde.');
+    e.code = noCredit ? 'saldo' : keyProblem ? 'clave' : 'servicio'; e.status = r.status; e.detail = `${r.status} ${d.error?.status || ''} ${msg}`.trim().slice(0, 300); throw e;
   }
   const cand = d.candidates?.[0];
   const part = cand?.content?.parts?.find((x) => x.inlineData || x.inline_data);
