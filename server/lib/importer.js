@@ -236,6 +236,20 @@ export function seedHeroVideo() {
     "Samadhi Style · SS'27", 'Esencia', 'Lo auténtico también se viste.', 'Ver la colección', '#tienda', '/media/hero-poster.jpg', '/media/hero.mp4', 'dark');
 }
 
+/** Portada sólo con videos: suma dos videos más y deja inactivos los banners de foto (se reactivan desde el panel). */
+export function seedHeroVideos2() {
+  if (getSetting('flags').heroVideos2) return;
+  setSetting('flags', { heroVideos2: true });
+  const first = get("SELECT position FROM banners WHERE video_url <> '' ORDER BY position LIMIT 1");
+  const base = first ? first.position : 0;
+  run("UPDATE banners SET active = 0 WHERE video_url = ''");
+  run('UPDATE banners SET position = position + 2 WHERE position > ?', base);
+  const add = (pos, eyebrow, title, subtitle, cta, link, n) => run('INSERT INTO banners(eyebrow,title,subtitle,cta_label,cta_link,image_url,video_url,tone,position) VALUES(?,?,?,?,?,?,?,?,?)',
+    eyebrow, title, subtitle, cta, link, `/media/hero-${n}-poster.jpg`, `/media/hero-${n}.mp4`, 'dark', pos);
+  add(base + 1, "Colección SS'27", 'Boho', 'Bordados, encaje y caída para los días largos.', 'Ver Boho', '#c/boho', 2);
+  add(base + 2, 'Nueva temporada', 'Para volver a vos', 'Prendas con alma propia.', 'Ver la colección', '#tienda', 3);
+}
+
 export function seedBannersIfEmpty() {
   if (get('SELECT COUNT(*) AS n FROM banners').n) return;
   const pic = (slug) => get('SELECT i.url FROM images i JOIN products p ON p.id = i.product_id WHERE p.slug = ? ORDER BY i.position LIMIT 1', slug)?.url;

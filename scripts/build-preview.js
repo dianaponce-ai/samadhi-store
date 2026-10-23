@@ -5,9 +5,10 @@ import path from 'node:path';
 import { ROOT } from '../server/lib/config.js';
 import { publicCatalog } from '../server/lib/catalog.js';
 import { DEMO_USERS } from './demo-users-list.js';
-import { seedHeroVideo } from '../server/lib/importer.js';
+import { seedHeroVideo, seedHeroVideos2 } from '../server/lib/importer.js';
 import { seedGarments } from '../server/lib/probador.js';
 seedHeroVideo();
+seedHeroVideos2();
 seedGarments();
 
 const out = process.argv.find((a) => a.endsWith('.html')) || path.join(ROOT, 'dist/vista-previa.html');

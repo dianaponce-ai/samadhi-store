@@ -63,7 +63,7 @@ app.use((err, req, res, next) => {
     console.log(`Catálogo inicial cargado: ${s.products} productos, ${s.images} fotos.`);
   }
 }
-{ const { seedHeroVideo } = await import('./lib/importer.js'); seedHeroVideo(); }
+{ const { seedHeroVideo, seedHeroVideos2 } = await import('./lib/importer.js'); seedHeroVideo(); seedHeroVideos2(); }
 { const { seedGarments } = await import('./lib/probador.js'); seedGarments(); }
 ensureFirstAdmin();
 startJobs();
