@@ -849,11 +849,11 @@ async function viewTryon() {
   const d = await api('/tryon');
   const S = d.settings, st = d.stats;
   SEG = !!d.segmentation;
-  const own = S.engine !== 'fashn';
+  const own = S.engine === 'samadhi';
   const conv = st.month ? Math.round((st.added / st.month) * 100) : 0;
   const tabs = [['prendas', 'Prendas'], ['uso', 'Uso'], ...(isAdmin() ? [['ajustes', 'Ajustes']] : [])];
   $('#view').innerHTML = `
-    <div class="page-head"><div><h1>Probador</h1><div class="sub">${own ? 'Motor propio: corre en el celular de la clienta, sin costo por prueba y sin que su foto salga del dispositivo.' : 'Motor FASHN: imagen generada con IA, 1 crédito por prueba.'}</div></div></div>
+    <div class="page-head"><div><h1>Probador</h1><div class="sub">${own ? 'Motor propio: corre en el celular de la clienta, sin costo por prueba y sin que su foto salga del dispositivo.' : S.engine === 'gemini' ? 'IA de Google (Gemini): genera una foto de la clienta con la prenda puesta. Se paga por imagen.' : 'Motor FASHN: imagen generada con IA, 1 crédito por prueba.'}</div></div></div>
     <div class="seg" role="tablist" style="margin-bottom:14px">${tabs.map(([k, l]) => `<button type="button" role="tab" data-ttab="${k}" aria-pressed="${tryTab.tab === k}">${l}</button>`).join('')}</div>
     <div id="tryPane"></div>`;
   $$('[data-ttab]').forEach((b) => (b.onclick = () => { tryTab.tab = b.dataset.ttab; viewTryon(); }));
@@ -872,8 +872,9 @@ async function viewTryon() {
     pane.innerHTML = `<form class="card" id="trSet" style="max-width:760px"><h2>Ajustes</h2>
       <label class="fl" style="flex-direction:row;align-items:center;gap:10px;margin-bottom:14px"><label class="switch"><input type="checkbox" name="enabled" ${S.enabled ? 'checked' : ''}><span></span></label><span>Mostrar el probador en la tienda</span></label>
       <div class="fl"><span>Motor</span>
+        <label class="radio-card"><input type="radio" name="engine" value="gemini" ${S.engine === 'gemini' ? 'checked' : ''}><span><b>Google Gemini (IA generativa)</b><small>Foto realista de la clienta con la prenda, en unos 10–20 segundos. Cuesta entre USD 0,03 y 0,07 por imagen. ${S.engine === 'gemini' && d.mock ? 'Falta GEMINI_API_KEY en el archivo .env.' : 'Si la IA no responde, la tienda usa el motor propio.'}</small></span></label>
         <label class="radio-card"><input type="radio" name="engine" value="samadhi" ${own ? 'checked' : ''}><span><b>Samadhi (propio)</b><small>Gratis e ilimitado. Calza las prendas preparadas sobre la foto o en vivo con la cámara. Es una simulación 2D: sirve para ver combinaciones y largos.</small></span></label>
-        <label class="radio-card"><input type="radio" name="engine" value="fashn" ${own ? '' : 'checked'}><span><b>FASHN (IA generativa)</b><small>Imagen fotorrealista, unos 8 segundos y 1 crédito por prueba. ${d.mock ? 'Falta FASHN_API_KEY en el archivo .env.' : 'Conectado.'}</small></span></label></div>
+        <label class="radio-card"><input type="radio" name="engine" value="fashn" ${S.engine === 'fashn' ? 'checked' : ''}><span><b>FASHN (IA generativa)</b><small>Imagen fotorrealista, unos 8 segundos y 1 crédito por prueba. ${S.engine === 'fashn' ? (d.mock ? 'Falta FASHN_API_KEY en el archivo .env.' : 'Conectado.') : ''}</small></span></label></div>
       <div class="row" style="margin-top:12px"><label class="fl"><span>FASHN · límite por día</span><input type="number" min="1" name="dailyLimit" value="${S.dailyLimit}"></label>
         <label class="fl"><span>FASHN · por persona, por hora</span><input type="number" min="1" name="perHour" value="${S.perHour}"></label>
         <label class="fl"><span>FASHN · calidad</span><select name="mode">${[['performance', 'Rápida'], ['balanced', 'Equilibrada'], ['quality', 'Máxima']].map(([k, l]) => `<option value="${k}" ${S.mode === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label></div>

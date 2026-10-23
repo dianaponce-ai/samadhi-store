@@ -37,6 +37,11 @@ export const config = {
     stockPath: env('DRAGONFISH_STOCK_PATH', 'ConsultaStockYPrecios'),
     syncSecret: env('LINCE_SYNC_SECRET'),
   },
+  gemini: {
+    // Probador con IA de Google (Gemini, modelos de imagen). Clave de Google AI Studio.
+    apiKey: env('GEMINI_API_KEY'),
+    model: env('GEMINI_IMAGE_MODEL', 'gemini-2.5-flash-image'),
+  },
   fashn: {
     // Probador virtual con IA (https://fashn.ai). Sin clave queda en modo prueba.
     apiKey: env('FASHN_API_KEY'),

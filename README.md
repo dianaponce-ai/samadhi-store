@@ -131,6 +131,17 @@ Sin claves queda en modo prueba: “Sincronizar ahora” simula una lectura con 
 
 ## Probador virtual
 
+### Google Gemini (el que viene elegido)
+La clienta sube su foto, elige la prenda y Gemini genera una foto nueva de ella con la prenda puesta (pliegues, luz y cuerpo reales), en unos 10–20 segundos. Cuesta entre USD 0,03 y 0,07 por imagen según el modelo; no hay uso gratis para imágenes.
+
+1. Entrá a [Google AI Studio](https://aistudio.google.com) con la cuenta de la tienda → **Get API key** → **Create API key**, y activá la facturación del proyecto (sin facturación no genera imágenes).
+2. **Tienda real:** poné la clave en `GEMINI_API_KEY` del `.env` y reiniciá.
+3. **Demo de Vercel:** en el proyecto de Vercel → **Settings → Environment Variables** → agregá `GEMINI_API_KEY` y volvé a publicar (Deployments → ⋯ → Redeploy). La demo usa la función `api/probador.js`.
+4. Sin clave, o si Gemini no responde, la tienda usa sola el motor propio (el de abajo) y lo avisa.
+
+La foto de la clienta viaja a Google sólo para generar la imagen; la tienda no la guarda. Con facturación activa, Google no usa ese contenido para mejorar sus productos. El modelo se puede cambiar con `GEMINI_IMAGE_MODEL` (por defecto `gemini-2.5-flash-image`).
+
+
 En cada prenda aparece **Probátelo** y en el menú, **Probador**. Hay dos motores; se elige en Panel → Probador → Ajustes.
 
 ### Motor Samadhi (propio, el que viene activado)

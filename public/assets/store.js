@@ -1074,9 +1074,10 @@ function openLegal(which) {
 // Detecta el cuerpo, calza las prendas preparadas del catálogo y deja ajustar tamaño, largo y posición.
 // Motor FASHN (opcional, de pago): la foto viaja al servicio de IA sólo para generar la imagen.
 const TRY_KEY = 'samadhi-probador-foto';
-const own = () => CAT.tryon?.engine !== 'fashn';
+const own = () => (CAT.tryon?.engine || 'samadhi') === 'samadhi' || tr.fallback;
+const iaName = () => (CAT.tryon?.engine === 'gemini' ? 'Google (Gemini)' : 'el servicio de IA');
 const tryonOk = (p) => !!(CAT.tryon?.enabled && p && p.images.length && (own() ? CAT.tryon.garments?.[p.id] : !p.categories.some((id) => (CAT.tryon.hidden || []).includes(id))));
-const tr = { p: null, img: 0, photo: null, base: null, result: null, look: [], status: 'photo', error: '', note: '', remember: false, consent: false, picking: false, q: '', log: null, mock: false, cmp: 50, body: null, bodyImg: null, size: '', live: null };
+const tr = { fallback: false, p: null, img: 0, photo: null, base: null, result: null, look: [], status: 'photo', error: '', note: '', remember: false, consent: false, picking: false, q: '', log: null, mock: false, cmp: 50, body: null, bodyImg: null, size: '', live: null };
 try { const saved = localStorage.getItem(TRY_KEY); if (saved) { tr.photo = saved; tr.remember = true; tr.consent = true; } } catch {}
 let ENGINE = null;
 async function engine() {
@@ -1203,7 +1204,7 @@ function renderTryon() {
       <div class="tr-g-imgs">${p.images.slice(0, own() ? 1 : 5).map((u, i) => `<button type="button" data-gimg="${i}" class="${i === tr.img ? 'on' : ''}" aria-label="Usar la foto ${i + 1}">${imgTag(p, u, { sizes: '72px' })}</button>`).join('')}</div>
       <div><div class="caps" style="color:var(--suave)">Prenda</div><div class="tr-g-name">${esc(p.name)}</div><div class="money">${fmt(nowPrice(p))}</div>
       <button class="link-btn" type="button" data-repick>Cambiar de prenda</button></div></div>` : '';
-  const privacy = own() ? 'Tu foto no sale de tu celular: el probador funciona en tu navegador y no la guardamos.' : 'Tu foto se usa sólo para generar la imagen: no la guardamos y el servicio de IA la borra al terminar.';
+  const privacy = own() ? 'Tu foto no sale de tu celular: el probador funciona en tu navegador y no la guardamos.' : `Tu foto se envía a ${iaName()} sólo para generar la imagen; la tienda no la guarda.`;
   const sizes = () => {
     const v = p.variants.filter(avail);
     return `${p.sizes.length ? `<div class="opt-label caps">Talle</div><div class="sizes">${p.sizes.map((sz) => { const ok = v.some((x) => x.size === sz); return `<button class="sz ${tr.size === sz ? 'on' : ''} ${ok ? '' : 'no'}" data-tsize="${esc(sz)}" ${ok ? '' : 'aria-disabled="true"'}>${esc(sz)}</button>`; }).join('')}</div>` : ''}
@@ -1220,6 +1221,7 @@ function renderTryon() {
   } else if (own()) {
     const a = cur?.adj;
     side = `${garment}<div class="tr-step">
+      ${tr.fallback && CAT.tryon?.engine !== 'samadhi' ? '<p class="note tr-warn">El probador con IA no está disponible en este momento: te mostramos la versión simple.</p>' : ''}
       ${tr.note ? `<p class="note tr-warn">${esc(tr.note)}</p>` : ''}
       ${tr.look.length ? `<div class="tr-look"><span class="caps">Tu look</span>${tr.look.map((x) => `<span class="tr-chip">${esc(x.p.name)}<button type="button" data-unlook="${x.p.id}" aria-label="Sacar ${esc(x.p.name)}">×</button></span>`).join('')}</div>` : ''}
       ${!tr.look.some((x) => x.p.id === p.id) ? `<button class="btn solid wide" type="button" data-go-try ${busy || !tr.body ? 'disabled' : ''}>${busy ? busyTxt : 'Probármelo'}</button>` : ''}
@@ -1250,19 +1252,30 @@ function renderTryon() {
     <div class="tr-body"><div class="tr-stage">${stage}</div><div class="tr-side">${tr.error ? `<div class="alert" role="alert">${esc(tr.error)}</div>` : ''}${side}</div></div>
     <input type="file" id="trFile" accept="image/*" hidden>`;
 }
-const norm = (x) => String(x || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+const norm = (x) => String(x || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+// Las imágenes generadas vienen en PNG (pesadas): se pasan a JPEG para mostrarlas y para seguir armando el look.
+const toJpeg = (src) => new Promise((ok) => { const i = new Image(); i.onload = () => { const c = document.createElement('canvas'); const k = Math.min(1, 1296 / i.naturalHeight); c.width = Math.round(i.naturalWidth * k); c.height = Math.round(i.naturalHeight * k); c.getContext('2d').drawImage(i, 0, 0, c.width, c.height); ok(c.toDataURL('image/jpeg', 0.9)); }; i.onerror = () => ok(src); i.src = src; });
 async function runTryon() {
   if (own()) return addToLook(tr.p);
   tr.status = 'working'; tr.error = ''; renderTryon();
   try {
-    const st = await api('/api/tryon', { productId: tr.p.id, image: tr.img, photo: tr.base });
+    const size = await new Promise((ok) => { const i = new Image(); i.onload = () => ok([i.naturalWidth, i.naturalHeight]); i.onerror = () => ok(null); i.src = tr.base; });
+    const st = await api('/api/tryon', { productId: tr.p.id, image: tr.img, photo: tr.base, photoSize: size, garmentUrl: tr.p.images[tr.img], kind: CAT.tryon.garments?.[tr.p.id]?.kind || null, name: tr.p.name });
     for (let i = 0; i < 80; i++) {
       await new Promise((ok) => setTimeout(ok, i < 3 ? 2500 : 1500));
       const r = await api('/api/tryon/' + encodeURIComponent(st.id));
-      if (r.status === 'completed') { tr.log = r.log; tr.mock = !!r.mock; tr.result = r.image || null; tr.cmp = 50; tr.look.push(tr.p); break; }
+      if (r.status === 'completed') { tr.log = r.log; tr.mock = !!r.mock; tr.result = r.image ? await toJpeg(r.image) : null; tr.cmp = 0; tr.look.push(tr.p); break; }
     }
     if (!tr.result && !tr.mock) throw new Error('Tardó demasiado. Probá de nuevo.');
-  } catch (e) { tr.error = e.message; }
+  } catch (e) {
+    // Sin IA configurada (o sin conexión con el servicio): seguimos con el probador propio.
+    if (['sin-clave', 'sin-ia'].includes(e.data?.code) && CAT.tryon.garments) {
+      tr.fallback = true; tr.status = 'ready';
+      if (!tryonOk(tr.p)) { tr.picking = true; return renderTryon(); }
+      return analyzePhoto();
+    }
+    tr.error = e.message;
+  }
   tr.status = 'ready'; renderTryon();
 }
 function bindTryon() {

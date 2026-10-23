@@ -15,7 +15,7 @@ export const KINDS = { top: 'Parte de arriba', bottom: 'Parte de abajo', full: '
 export const isShort = (text) => /short|falda|pollera|bermuda|mini/i.test(String(text || ''));
 /** Tipo de prenda según su categoría o nombre. */
 export function kindFor(text) {
-  const t = String(text || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+  const t = String(text || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
   if (/vestid|enterit|mono|jumpsuit|tunica|kimono|solero/.test(t)) return 'full';
   if (/jean|pantal|short|falda|pollera|wide ?leg|oxford|baggy|cargo|jogger|calza|bermuda|mom\b/.test(t)) return 'bottom';
   if (/blusa|camis|remer|musculosa|top|sweater|buzo|saco|chaleco|campera|chaqueta|blazer|cardigan|sueter|body|crop|tejid|polera|chomb|kimono/.test(t)) return 'top';

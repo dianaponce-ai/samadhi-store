@@ -7,6 +7,10 @@ import { config } from '../lib/config.js';
 import { db, all, get, run, getSetting } from '../lib/db.js';
 import { HttpError } from '../lib/util.js';
 import { publicGarments } from '../lib/probador.js';
+import { geminiTryOn } from './gemini.js';
+import { readFile } from 'node:fs/promises';
+import path from 'node:path';
+import { ROOT } from '../lib/config.js';
 
 db.exec(`
 CREATE TABLE IF NOT EXISTS tryon_log (
@@ -23,12 +27,12 @@ CREATE INDEX IF NOT EXISTS tryon_log_at ON tryon_log(at);
 `);
 
 const API = 'https://api.fashn.ai/v1';
-// engine: 'samadhi' (motor propio, gratis, en el navegador) o 'fashn' (IA generativa, pago por imagen).
-export const TRYON_DEFAULTS = { enabled: true, engine: 'samadhi', dailyLimit: 300, perHour: 12, mode: 'balanced', hiddenCategories: null };
+// engine: 'samadhi' (motor propio, en el navegador), 'gemini' (IA de Google) o 'fashn' (IA de FASHN). Los dos últimos se pagan por imagen.
+export const TRYON_DEFAULTS = { enabled: true, engine: 'gemini', dailyLimit: 300, perHour: 12, mode: 'balanced', hiddenCategories: null };
 const ACCESSORY = /acces|bolso|cartera|cintur|bijou|aros|collar|pa[ñn]uelo|sombrero|gorro|lentes|calzado|zapat|bota|sandal|media/i;
 
 export function tryonSettings() { return { ...TRYON_DEFAULTS, ...getSetting('tryon') }; }
-export const tryonMock = () => !config.fashn.apiKey;
+export const tryonMock = (engine = tryonSettings().engine) => (engine === 'gemini' ? !config.gemini.apiKey : !config.fashn.apiKey);
 /** Categorías donde no se muestra el probador (por defecto, accesorios y calzado). */
 export function hiddenCategories() {
   const s = tryonSettings();
@@ -37,6 +41,10 @@ export function hiddenCategories() {
 }
 export function publicTryon() {
   const s = tryonSettings();
+  if (s.engine === 'gemini' && !tryonMock('gemini')) {
+    // Las prendas del motor propio viajan igual: si la IA no responde, la tienda vuelve al probador propio.
+    return { enabled: !!s.enabled, engine: 'gemini', hidden: hiddenCategories(), garments: publicGarments() };
+  }
   if (s.engine !== 'fashn') {
     const garments = publicGarments();
     return { enabled: !!s.enabled && Object.keys(garments).length > 0, engine: 'samadhi', garments, hidden: [] };
@@ -55,7 +63,7 @@ const jobs = new Map(); // id → { fashnId, logId, started, productId }
 const whoHash = (ip) => crypto.createHmac('sha256', config.sessionSecret).update('tryon:' + ip).digest('base64url').slice(0, 16);
 const abs = (u) => (/^https?:/.test(u) ? u : `${config.publicUrl}/${String(u).replace(/^\//, '')}`);
 
-export async function startTryon({ productId, image = 0, photo }, ip) {
+export async function startTryon({ productId, image = 0, photo, photoSize }, ip) {
   const s = tryonSettings();
   if (!s.enabled) throw new HttpError(403, 'El probador virtual no está disponible en este momento.');
   const p = get('SELECT id, name FROM products WHERE id = ? AND visible = 1', Number(productId));
@@ -71,9 +79,25 @@ export async function startTryon({ productId, image = 0, photo }, ip) {
 
   const logId = Number(run('INSERT INTO tryon_log(product_id, who) VALUES(?, ?)', p.id, who).lastInsertRowid);
   const id = crypto.randomBytes(12).toString('base64url');
+  if (s.engine === 'gemini' && tryonMock('gemini')) throw new HttpError(503, 'El probador con IA no está configurado.', { code: 'sin-clave' });
   if (tryonMock()) {
     jobs.set(id, { mock: true, logId, started: Date.now(), productId: p.id });
     return { id, mock: true };
+  }
+  if (s.engine === 'gemini') {
+    const g = get('SELECT kind FROM tryon_garments WHERE product_id = ?', p.id);
+    const cats = all('SELECT c.name FROM product_categories pc JOIN categories c ON c.id = pc.category_id WHERE pc.product_id = ?', p.id).map((c) => c.name).join(' ');
+    const kind = g?.kind || (/vestid|mono|enterit|tunica/i.test(p.name + ' ' + cats) ? 'full' : /jean|pantal|short|falda|pollera|wide/i.test(p.name + ' ' + cats) ? 'bottom' : 'top');
+    const job = { gemini: true, logId, started: Date.now(), productId: p.id, done: null, error: null };
+    jobs.set(id, job);
+    (async () => {
+      try {
+        const garmentImg = await loadGarment(garment);
+        const r = await geminiTryOn({ apiKey: config.gemini.apiKey, model: config.gemini.model, person: photo, personSize: Array.isArray(photoSize) ? photoSize : null, garment: garmentImg, kind, name: p.name, flat: /\.png$/i.test(garment) });
+        job.done = r.image;
+      } catch (e) { job.error = e; console.error('[probador gemini]', e.code, e.detail || e.message); }
+    })();
+    return { id };
   }
   const r = await fetch(`${API}/run`, {
     method: 'POST', signal: AbortSignal.timeout(30000),
@@ -105,6 +129,12 @@ export async function pollTryon(id) {
   const j = jobs.get(String(id));
   if (!j) throw new HttpError(404, 'Esta prueba ya venció. Volvé a generarla.');
   const finish = (status, error = null) => { run('UPDATE tryon_log SET status = ?, ms = ?, error = ? WHERE id = ?', status, Date.now() - j.started, error, j.logId); };
+  if (j.gemini) {
+    if (j.done) { finish('lista'); jobs.delete(id); return { status: 'completed', image: j.done, log: j.logId }; }
+    if (j.error) { finish('error', `${j.error.code}: ${j.error.detail || j.error.message}`.slice(0, 200)); jobs.delete(id); throw new HttpError(j.error.code === 'sin-clave' ? 503 : 422, j.error.message, { code: j.error.code }); }
+    if (Date.now() - j.started > 120e3) { finish('error', 'tiempo agotado'); jobs.delete(id); throw new HttpError(504, 'Tardó demasiado. Probá de nuevo.'); }
+    return { status: 'processing' };
+  }
   if (j.mock) {
     if (Date.now() - j.started < 2500) return { status: 'processing' };
     finish('prueba'); jobs.delete(id);
@@ -135,4 +165,16 @@ export function tryonStats() {
   const avg = get(`SELECT AVG(ms) ms FROM tryon_log WHERE at > datetime('now','-30 days') AND status = 'lista'`).ms;
   const today = day(1), month = day(30);
   return { today: today.n, month: month.n, added: month.a || 0, errors, avgSeconds: avg ? Math.round(avg / 100) / 10 : null, top };
+}
+
+/** Foto de la prenda en base64 (del CDN de Tiendanube o de los archivos de la tienda). */
+async function loadGarment(url) {
+  if (/^https?:/.test(url)) {
+    const r = await fetch(url.replace(/-\d+-\d+\.(webp|jpg|png)$/, '-1024-1024.$1'), { signal: AbortSignal.timeout(20000) });
+    if (!r.ok) throw Object.assign(new Error('No pudimos cargar la foto de la prenda.'), { code: 'servicio' });
+    return { mimeType: r.headers.get('content-type') || 'image/webp', data: Buffer.from(await r.arrayBuffer()).toString('base64') };
+  }
+  const f = url.startsWith('/uploads/') ? path.join(config.dataDir, url) : path.join(ROOT, 'public', url);
+  const ext = path.extname(f).slice(1).toLowerCase();
+  return { mimeType: ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg', data: (await readFile(f)).toString('base64') };
 }

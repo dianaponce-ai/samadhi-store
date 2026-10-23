@@ -535,7 +535,7 @@ admin.put('/tryon', onlyAdmin, (req, res) => {
     dailyLimit: b.dailyLimit === undefined ? cur.dailyLimit : Math.min(5000, Math.max(1, int(b.dailyLimit, cur.dailyLimit))),
     perHour: b.perHour === undefined ? cur.perHour : Math.min(100, Math.max(1, int(b.perHour, cur.perHour))),
     mode: ['performance', 'balanced', 'quality'].includes(b.mode) ? b.mode : cur.mode,
-    engine: ['samadhi', 'fashn'].includes(b.engine) ? b.engine : cur.engine,
+    engine: ['samadhi', 'fashn', 'gemini'].includes(b.engine) ? b.engine : cur.engine,
     hiddenCategories: Array.isArray(b.hiddenCategories) ? b.hiddenCategories.map(Number) : cur.hiddenCategories,
   });
   invalidateCatalog();

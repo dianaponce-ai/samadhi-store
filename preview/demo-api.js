@@ -38,7 +38,7 @@ function seedState() {
         origin: { calle: '', numero: '', codigoPostal: '', localidad: '', region: 'AR-B', pais: 'Argentina' }, sender: { nombreCompleto: 'Samadhi Style', email: '', documentoTipo: 'CUIT', documentoNumero: '', telefono: '' } },
       payments: { installments: 3, transferEnabled: true, transferDiscount: 10, bankHolder: 'Samadhi Style (ejemplo)', bankName: 'Banco de ejemplo', bankCbu: '0000003100000000000001', bankAlias: 'SAMADHI.STYLE.EJEMPLO', transferHours: 48 },
       checkout: { requireDni: true, orderPrefix: 'S', nextOrderNumber: 1001 },
-      tryon: { enabled: true, engine: 'samadhi', dailyLimit: 300, perHour: 12, mode: 'balanced', hiddenCategories: null },
+      tryon: { enabled: true, engine: 'gemini', dailyLimit: 300, perHour: 12, mode: 'balanced', hiddenCategories: null },
       content: { ...window.__CONTENT.CONTENT_DEFAULTS, faq: window.__CONTENT.CONTENT_DEFAULTS.faq.map((x) => ({ ...x })) },
       emails: { enabled: Object.fromEntries(Object.keys(window.__EMAIL.TEMPLATES).map((k) => [k, true])), paymentReminderHours: 24, transferReminderHoursBefore: 12, pickupReminderDays: 3, cartReminder1Hours: 1, cartReminder2Hours: 48, staffEmails: 'admin@samadhistyle.com.ar' },
     },
@@ -299,6 +299,7 @@ function publicCatalog() {
     store: { name: st.store.name, tagline: st.store.tagline, instagram: st.store.instagram, whatsapp: st.store.whatsapp, email: st.store.email, announcement: st.store.announcement },
     shipping: { pickup: st.shipping.pickupEnabled ? { address: st.shipping.pickupAddress, hours: st.shipping.pickupHours } : null, freeShippingFrom: st.shipping.freeShippingFrom || 0, domicilio: !!st.shipping.andreaniDomicilio, sucursal: !!st.shipping.andreaniSucursal },
     tryon: S.settings.tryon.engine === 'fashn' ? { enabled: S.settings.tryon.enabled, engine: 'fashn', mock: true, hidden: tryonHidden() }
+      : S.settings.tryon.engine === 'gemini' ? { enabled: S.settings.tryon.enabled, engine: 'gemini', hidden: tryonHidden(), garments: Object.fromEntries(Object.entries(S.garments).filter(([id, g]) => g.status === 'aprobada').map(([id, { status, source, ...g }]) => [id, g])) }
       : { enabled: S.settings.tryon.enabled, engine: 'samadhi', garments: Object.fromEntries(Object.entries(S.garments).filter(([id, g]) => g.status === 'aprobada' && S.products.find((p) => p.id === Number(id))?.visible).map(([id, { status, source, ...g }]) => [id, g])), hidden: [] },
     content: { faq: S.settings.content.faq, terms: S.settings.content.terms, returns: S.settings.content.returns, reviews: S.settings.content.reviewsEnabled },
     payments: { installments: st.payments.installments || 1, transfer: st.payments.transferEnabled ? { discount: st.payments.transferDiscount || 0 } : null },
@@ -484,6 +485,7 @@ function storeRoute(method, path, q, b) {
   const tm = path.match(/^\/api\/tryon\/([\w-]+)$/);
   if (tm && method === 'GET') {
     const j = tryJobs.get(tm[1]); if (!j) fail(404, 'Esta prueba ya venció.');
+    if (j.image) { tryJobs.delete(tm[1]); return { status: 'completed', image: j.image, log: j.log }; }
     if (Date.now() - j.at < 2500) return { status: 'processing' };
     return { status: 'completed', mock: true, log: j.log };
   }
@@ -779,7 +781,7 @@ function adminRoute(method, path, q, b, raw) {
   if (path === '/tryon' && method === 'PUT') {
     onlyAdmin();
     const t = S.settings.tryon;
-    if (['samadhi', 'fashn'].includes(b.engine)) t.engine = b.engine;
+    if (['samadhi', 'fashn', 'gemini'].includes(b.engine)) t.engine = b.engine;
     Object.assign(t, { enabled: !!b.enabled, dailyLimit: Number(b.dailyLimit) || t.dailyLimit, perHour: Number(b.perHour) || t.perHour, mode: b.mode || t.mode, hiddenCategories: Array.isArray(b.hiddenCategories) ? b.hiddenCategories : t.hiddenCategories });
     return { ok: true };
   }
@@ -899,6 +901,19 @@ const tick = () => new Promise((r) => setTimeout(r, 120 + Math.random() * 120));
 window.__SAMADHI_API = async (url, { method = 'GET', body } = {}) => {
   await tick();
   const u = new URL(url, 'https://demo.local');
+  // Probador con IA: en la demo de Vercel lo genera la función /api/probador (Google Gemini).
+  if (u.pathname === '/api/tryon' && method === 'POST' && S.settings.tryon.engine === 'gemini') {
+    const b = body || {}, p = S.products.find((x) => x.id === Number(b.productId));
+    if (!p) { const err = new Error('No encontramos esa prenda.'); err.status = 404; throw err; }
+    let r, d = {};
+    try { r = await fetch('/api/probador', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ photo: b.photo, photoSize: b.photoSize, garmentUrl: b.garmentUrl, kind: b.kind || S.garments[p.id]?.kind, name: p.name }) }); d = await r.json().catch(() => ({})); }
+    catch { r = null; }
+    if (!r || r.status === 404 || r.status === 405 || d.code === 'sin-clave') { const err = new Error('El probador con IA no está disponible acá.'); err.data = { code: 'sin-ia' }; err.status = 503; throw err; }
+    if (!r.ok || !d.image) { const err = new Error(d.error || 'No pudimos generar la imagen.'); err.data = { code: d.code }; err.status = r.status; throw err; }
+    const id = token(); const log = { id: S.tryons.length + 1, at: sqlDate(), product_id: p.id, status: 'lista', ms: 0, added: 0 };
+    S.tryons.push(log); tryJobs.set(id, { at: 0, log: log.id, image: d.image }); save();
+    return { id };
+  }
   try { const out = storeRoute(method, u.pathname, u.searchParams, body || {}); save(); return structuredClone(out); }
   catch (e) { if (e instanceof ApiError) { const err = new Error(e.message); err.data = e.data; err.status = e.status; throw err; } throw e; }
 };

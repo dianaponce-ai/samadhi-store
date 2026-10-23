@@ -295,6 +295,12 @@ test('probador: motor propio con prendas preparadas y FASHN en modo prueba', asy
   const p = cat.products.find((x) => x.images.length);
   assert.equal((await json('/api/tryon', { method: 'POST', body: { productId: p.id, photo: 'no-es-una-foto' } })).status, 422);
   const photo = 'data:image/jpeg;base64,' + Buffer.alloc(300 * 1024, 7).toString('base64'); // pesa más de 200 kB: prueba el límite propio de esta ruta
+  // Gemini viene elegido pero sin clave: el servidor avisa para que la tienda use el motor propio.
+  const nok = await json('/api/tryon', { method: 'POST', body: { productId: p.id, image: 0, photo } });
+  assert.equal(nok.status, 503);
+  assert.equal(nok.data.code, 'sin-clave');
+  { const l = await json('/api/admin/login', { method: 'POST', body: { email: 'test@samadhi.local', password: 'clave-de-prueba-123' } });
+    await json('/api/admin/tryon', { method: 'PUT', headers: { cookie: l.headers.get('set-cookie').split(';')[0], 'x-samadhi-admin': '1' }, body: { engine: 'fashn', enabled: true } }); }
   const st = await json('/api/tryon', { method: 'POST', body: { productId: p.id, image: 0, photo } });
   assert.equal(st.status, 200);
   assert.ok(st.data.id && st.data.mock);
@@ -307,14 +313,31 @@ test('probador: motor propio con prendas preparadas y FASHN en modo prueba', asy
   const H = { cookie: login.headers.get('set-cookie').split(';')[0], 'x-samadhi-admin': '1' };
   const a = await json('/api/admin/tryon', { headers: H });
   assert.equal(a.data.stats.month, 2);
+  assert.equal(a.data.settings.engine, 'fashn');
   assert.equal(a.data.stats.added, 1);
   assert.ok(a.data.garmentsOn >= 50);
   const gl = await json('/api/admin/tryon/garments', { headers: H });
   const row = gl.data.find((r) => r.url);
+  await json('/api/admin/tryon', { method: 'PUT', headers: H, body: { engine: 'samadhi', enabled: true } });
   await json('/api/admin/tryon/garments/' + row.id, { method: 'PUT', headers: H, body: { status: 'oculta' } });
   assert.ok(!(await json('/api/catalog')).data.tryon.garments[row.id]);
   const tiny = 'data:image/webp;base64,' + Buffer.from('RIFF0000WEBP').toString('base64');
   const sv = await json('/api/admin/tryon/garments/' + row.id, { method: 'POST', headers: H, body: { data: tiny, kind: 'top', pts: [{ name: 'shL', x: 1, y: 1 }, { name: 'shR', x: 2, y: 1 }, { name: 'hipL', x: 1, y: 3 }, { name: 'hipR', x: 2, y: 3 }], size: [10, 20], quality: 0.8 } });
   assert.match(sv.data.url, /^\/uploads\/probador\//);
   assert.equal((await fetch(B + sv.data.url)).status, 200);
+  await json('/api/admin/tryon', { method: 'PUT', headers: H, body: { engine: 'gemini', enabled: true } });
+});
+
+test('Gemini: arma el pedido con las dos fotos y la indicación', async () => {
+  const { buildPrompt, closestRatio, geminiTryOn } = await import('../server/integrations/gemini.js');
+  assert.equal(closestRatio(720, 1280), '9:16');
+  assert.equal(closestRatio(1000, 1500), '2:3');
+  assert.match(buildPrompt({ kind: 'top', name: 'Blazer' }), /upper-body garment.*Blazer.*replacing their current top/s);
+  await assert.rejects(geminiTryOn({ apiKey: '', person: 'data:image/jpeg;base64,AA==', garment: { mimeType: 'image/png', data: 'AA==' }, kind: 'top' }), (e) => e.code === 'sin-clave');
+  // Respuesta simulada del servicio: devuelve la imagen generada.
+  const real = globalThis.fetch;
+  globalThis.fetch = async (url, opts) => { const body = JSON.parse(opts.body); assert.equal(body.contents[0].parts.length, 3); assert.ok(String(url).includes(':generateContent'));
+    return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ inlineData: { mimeType: 'image/png', data: 'iVBOR' } }] } }] }), { status: 200 }); };
+  try { const r = await geminiTryOn({ apiKey: 'k', person: 'data:image/jpeg;base64,AA==', personSize: [600, 900], garment: { mimeType: 'image/png', data: 'AA==' }, kind: 'full' }); assert.equal(r.image, 'data:image/png;base64,iVBOR'); }
+  finally { globalThis.fetch = real; }
 });

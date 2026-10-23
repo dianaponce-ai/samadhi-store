@@ -229,7 +229,7 @@ export function importTiendanube(csvBuffer, photosText = '') {
 /** Portada con video: se suma una sola vez como primer banner (después se edita o se borra desde el panel). */
 export function seedHeroVideo() {
   if (getSetting('flags').heroVideo) return;
-  setSetting('flags', { heroVideo: true });
+  setSetting('flags', { ...getSetting('flags'), heroVideo: true });
   if (get("SELECT COUNT(*) n FROM banners WHERE video_url <> ''").n) return;
   run('UPDATE banners SET position = position + 1');
   run('INSERT INTO banners(eyebrow,title,subtitle,cta_label,cta_link,image_url,video_url,tone,position) VALUES(?,?,?,?,?,?,?,?,0)',
@@ -239,7 +239,7 @@ export function seedHeroVideo() {
 /** Portada sólo con videos: suma dos videos más y deja inactivos los banners de foto (se reactivan desde el panel). */
 export function seedHeroVideos2() {
   if (getSetting('flags').heroVideos2) return;
-  setSetting('flags', { heroVideos2: true });
+  setSetting('flags', { ...getSetting('flags'), heroVideos2: true });
   const first = get("SELECT position FROM banners WHERE video_url <> '' ORDER BY position LIMIT 1");
   const base = first ? first.position : 0;
   run("UPDATE banners SET active = 0 WHERE video_url = ''");
