@@ -1,6 +1,6 @@
 // Servidor de prueba para la vista previa: responde las mismas rutas que server/ pero en el navegador,
 // con el catálogo real y pedidos de ejemplo. Los cambios se guardan solo en este navegador.
-const KEY = 'samadhi-demo-v10';
+const KEY = 'samadhi-demo-v11';
 const SEED = window.SAMADHI_EMBED;
 const DEMO_USERS = window.__SAMADHI_DEMO_USERS;
 
@@ -23,7 +23,7 @@ const slugify = (s) => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]
 // ── Estado inicial ─────────────────────────────────────
 function seedState() {
   const st = {
-    v: 10,
+    v: 11,
     products: SEED.products.map((p, i) => ({
       id: p.id, slug: p.slug, name: p.name, ref_code: p.ref || '', description: p.desc || '', collection: p.collection || '',
       visible: 1, featured: p.featured ? 1 : 0, free_shipping: p.freeShipping ? 1 : 0, position: i, weight_kg: 0.5, height_cm: 5, width_cm: 30, depth_cm: 30,
@@ -64,6 +64,10 @@ function seedState() {
       const cu = st.customers.length && r() < 0.8 ? st.customers[Math.floor(r() * Math.min(18, st.customers.length))] : null;
       st.tryons.push({ id: i + 1, at: sqlDate(new Date(Date.now() - r() * 30 * 864e5)), product_id: p.id, status: r() < 0.06 ? 'error' : 'lista', ms: 6500 + Math.round(r() * 4000), added: r() < 0.27 ? 1 : 0, customer_id: cu?.id || null });
     }
+    // Clienta para probar el envío de emails (Diana): se probó algunas prendas hace poco.
+    const did = addCustomer(st, { email: 'diana@nifty-agency.com', name: 'Diana Ponce Atencio', phone: '', created_at: sqlDate(new Date(Date.now() - 2 * 864e5)) });
+    const picks = ['vestido-juana', 'blazer-fucsia', 'blazer-lola', 'wide-leg'].map((k) => pool.find((p) => p.slug.startsWith(k))).filter(Boolean);
+    picks.forEach((p, k) => st.tryons.push({ id: st.tryons.length + 1, at: sqlDate(new Date(Date.now() - (k + 1) * 3 * 3600e3)), product_id: p.id, status: 'lista', ms: 9000, added: k === 1 ? 1 : 0, customer_id: did }));
   }
   { // Un arrepentimiento de ejemplo, para ver la sección en el panel.
     const o = st.orders.filter((x) => x.status === 'delivered' && x.email.endsWith('@ejemplo.com')).at(-1);
