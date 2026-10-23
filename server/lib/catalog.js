@@ -44,7 +44,7 @@ export function publicCatalog() {
     products: out,
     categories,
     banners,
-    store: { name: store.name, tagline: store.tagline, instagram: store.instagram, whatsapp: store.whatsapp, email: store.email, announcement: store.announcement },
+    store: { name: store.name, tagline: store.tagline, instagram: store.instagram, whatsapp: store.whatsapp, email: store.email, announcement: store.announcement, spaUrl: store.spaUrl },
     shipping: {
       pickup: shipping.pickupEnabled ? { address: shipping.pickupAddress, hours: shipping.pickupHours } : null,
       freeShippingFrom: shipping.freeShippingFrom || 0,

@@ -265,6 +265,7 @@ function renderCats() {
   $('#mnav').innerHTML = `<div class="caps" style="color:var(--suave)">Menú</div>` +
     [['all', 'Tienda'], ['new', "Colección SS'27"], ['sale', 'Sale']].map(([k, l]) => `<button data-cat="${k}">${l}</button>`).join('') +
     (CAT.tryon?.enabled ? '<button data-tryon-open>Probador</button>' : '') + '<a class="mnav-link" href="#nosotras">Nosotras</a>' +
+    (CAT.store?.spaUrl ? `<a class="mnav-link" href="${esc(CAT.store.spaUrl)}" target="_blank" rel="noopener">Spa ↗</a>` : '') +
     `<div class="caps" style="color:var(--suave);margin-top:14px">Categorías</div>` + top.map((c) => `<button class="sm" data-cat="${esc(c.slug)}">${esc(c.name)}</button>`).join('');
 }
 function setCat(k, scroll = true) {
@@ -918,7 +919,10 @@ function renderStatic() {
   if (s.instagram) social.push(`<li><a href="https://instagram.com/${esc(s.instagram.replace('@', ''))}" target="_blank" rel="noopener">Instagram · @${esc(s.instagram.replace('@', ''))}</a></li>`);
   if (s.whatsapp) { const d = s.whatsapp.replace(/\D/g, '').replace(/^0/, ''); social.push(`<li><a href="https://wa.me/549${esc(d)}" target="_blank" rel="noopener">WhatsApp · ${esc(s.whatsapp)}</a></li>`); }
   if (s.email) social.push(`<li>${esc(s.email)}</li>`);
+  if (s.spaUrl) social.push(`<li><a href="${esc(s.spaUrl)}" target="_blank" rel="noopener">Casa Samadhi · Café &amp; Spa ↗</a></li>`);
   $('#footSocial').innerHTML = social.join('') || '<li>@samadhistyle</li>';
+  // Botón y banda hacia la web del spa (se ocultan si no hay dirección cargada).
+  for (const id of ['#spaLink', '#bandSpa']) { const a = $(id); if (!a) continue; if (s.spaUrl) a.href = s.spaUrl; a.hidden = !s.spaUrl; }
   if (CAT.shipping.pickup?.address) { $('#footPickup').hidden = false; $('#footPickup').textContent = `Retiro: ${CAT.shipping.pickup.address}`; }
   const bandImg = CAT.products.find((p) => p.featured && p.images[1])?.images[1] || CAT.banners[1]?.image_url;
   renderFaq();

@@ -33,7 +33,7 @@ function seedState() {
     categories: SEED.categories.map((c, i) => ({ id: c.id, name: c.name, slug: c.slug, collection: c.collection || '', position: c.position ?? i, visible: 1 })),
     banners: SEED.banners.map((b, i) => ({ ...b, position: i, active: 1 })),
     settings: {
-      store: { name: 'Samadhi Style', tagline: 'Lo auténtico también se viste.', email: '', phone: '', whatsapp: SEED.store.whatsapp || '', instagram: SEED.store.instagram || '', address: '', announcement: SEED.store.announcement || '' },
+      store: { name: 'Samadhi Style', tagline: 'Lo auténtico también se viste.', email: '', phone: '', whatsapp: SEED.store.whatsapp || '', instagram: SEED.store.instagram || '', address: '', announcement: SEED.store.announcement || '', spaUrl: SEED.store.spaUrl || 'https://casa-samadhi.vercel.app' },
       shipping: { pickupEnabled: true, pickupAddress: 'La Plata (dirección de ejemplo)', pickupHours: 'Lunes a sábado de 10 a 19', freeShippingFrom: 0, andreaniDomicilio: true, andreaniSucursal: true, extraHandling: 0,
         origin: { calle: '', numero: '', codigoPostal: '', localidad: '', region: 'AR-B', pais: 'Argentina' }, sender: { nombreCompleto: 'Samadhi Style', email: '', documentoTipo: 'CUIT', documentoNumero: '', telefono: '' } },
       payments: { installments: 3, transferEnabled: true, transferDiscount: 10, bankHolder: 'Samadhi Style (ejemplo)', bankName: 'Banco de ejemplo', bankCbu: '0000003100000000000001', bankAlias: 'SAMADHI.STYLE.EJEMPLO', transferHours: 48 },
@@ -296,7 +296,7 @@ function publicCatalog() {
     products,
     categories: S.categories.filter((c) => c.visible && used.has(c.id)).sort((a, b) => a.position - b.position).map((c) => ({ ...c, count: products.filter((p) => p.categories.includes(c.id)).length })),
     banners: S.banners.filter((b) => b.active).sort((a, b) => a.position - b.position),
-    store: { name: st.store.name, tagline: st.store.tagline, instagram: st.store.instagram, whatsapp: st.store.whatsapp, email: st.store.email, announcement: st.store.announcement },
+    store: { name: st.store.name, tagline: st.store.tagline, instagram: st.store.instagram, whatsapp: st.store.whatsapp, email: st.store.email, announcement: st.store.announcement, spaUrl: st.store.spaUrl || 'https://casa-samadhi.vercel.app' },
     shipping: { pickup: st.shipping.pickupEnabled ? { address: st.shipping.pickupAddress, hours: st.shipping.pickupHours } : null, freeShippingFrom: st.shipping.freeShippingFrom || 0, domicilio: !!st.shipping.andreaniDomicilio, sucursal: !!st.shipping.andreaniSucursal },
     tryon: S.settings.tryon.engine === 'fashn' ? { enabled: S.settings.tryon.enabled, engine: 'fashn', mock: true, hidden: tryonHidden() }
       : S.settings.tryon.engine === 'gemini' ? { enabled: S.settings.tryon.enabled, engine: 'gemini', hidden: tryonHidden(), garments: Object.fromEntries(Object.entries(S.garments).filter(([id, g]) => g.status === 'aprobada').map(([id, { status, source, ...g }]) => [id, g])) }

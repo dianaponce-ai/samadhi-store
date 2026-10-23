@@ -221,6 +221,7 @@ const DEFAULT_SETTINGS = {
     instagram: 'samadhistyle',
     address: '',
     announcement: '10% OFF pagando con transferencia · 3 cuotas sin interés · Envíos a todo el país',
+    spaUrl: 'https://casa-samadhi.vercel.app', // botón "Spa": web de Casa Samadhi
   },
   shipping: {
     pickupEnabled: true,

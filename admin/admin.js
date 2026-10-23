@@ -527,6 +527,7 @@ async function viewSettings() {
         <label class="fl"><span>Barra de anuncios</span><input data-s="store.announcement" value="${esc(st.announcement)}"></label>
         <div class="row"><label class="fl"><span>Instagram</span><input data-s="store.instagram" value="${esc(st.instagram)}"></label><label class="fl"><span>WhatsApp</span><input data-s="store.whatsapp" value="${esc(st.whatsapp)}"></label></div>
         <label class="fl"><span>Email de contacto</span><input data-s="store.email" value="${esc(st.email)}"></label>
+        <label class="fl"><span>Web del spa (botón "Spa")</span><input data-s="store.spaUrl" type="url" value="${esc(st.spaUrl || '')}" placeholder="https://casa-samadhi.vercel.app"><span class="help">Casa Samadhi · Café &amp; Spa. Vacío = sin botón.</span></label>
       </div>
       <div class="card form"><h2>Integraciones</h2>
         <dl class="kv"><dt>Mercado Pago</dt><dd>${stat(I.mercadopago)}${I.mercadopago === 'prueba' ? '<div class="small muted">Completá MP_ACCESS_TOKEN en el archivo .env para cobrar de verdad.</div>' : ''}</dd>

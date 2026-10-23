@@ -49,6 +49,12 @@ header.top.scrolled:hover, header.top.scrolled:focus-within { background: color-
 .icon-btn svg { width: 20px; height: 20px; stroke: currentColor; fill: none; stroke-width: 1.1; }
 .bag-count { min-width: 18px; height: 18px; border-radius: 9px; background: var(--tinta); color: var(--marfil); font-size: 10px; letter-spacing: 0; display: inline-grid; place-items: center; padding: 0 5px; }
 .menu-btn { display: inline-flex; }
+.spa-link { display: inline-flex; align-items: center; gap: 6px; font-size: 10px; letter-spacing: .28em; text-transform: uppercase; text-decoration: none; border: 1px solid var(--linea); border-radius: 999px; padding: 7px 12px 7px 14px; transition: border-color .25s; white-space: nowrap; }
+.spa-link:hover { border-color: var(--tinta); }
+.spa-link svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 1.3; }
+.band .band-spa { margin-top: 26px; }
+.band .band-spa:hover { background: var(--marfil); color: var(--tinta); border-color: var(--marfil); }
+@media (max-width: 480px) { .spa-link { padding: 6px 9px; letter-spacing: .18em; } .spa-link svg { display: none; } .top .tools { gap: 12px; } .top .wrap { gap: 12px; } }
 .icon-btn .lbl { display: none; }
 .tools .icon-btn { padding: 4px; }
 
