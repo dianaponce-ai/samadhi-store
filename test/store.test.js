@@ -341,7 +341,8 @@ test('Gemini: arma el pedido con las dos fotos y la indicación', async () => {
   const { buildPrompt, closestRatio, geminiTryOn } = await import('../server/integrations/gemini.js');
   assert.equal(closestRatio(720, 1280), '9:16');
   assert.equal(closestRatio(1000, 1500), '2:3');
-  assert.match(buildPrompt({ kind: 'top', name: 'Blazer' }), /upper-body garment.*Blazer.*replacing their current top/s);
+  assert.match(buildPrompt({ kind: 'top', name: 'Blazer' }), /upper-body garment.*Blazer.*Replace ONLY the customer's current top/s);
+  assert.match(buildPrompt({ kind: 'full', name: 'Vestido Juana' }), /DRESS.*remove BOTH.*top AND their current trousers/s);
   await assert.rejects(geminiTryOn({ apiKey: '', person: 'data:image/jpeg;base64,AA==', garment: { mimeType: 'image/png', data: 'AA==' }, kind: 'top' }), (e) => e.code === 'sin-clave');
   // Respuesta simulada del servicio: devuelve la imagen generada.
   const real = globalThis.fetch;
