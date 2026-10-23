@@ -5,7 +5,7 @@ import { publicCatalog } from '../lib/catalog.js';
 import { HttpError, digits } from '../lib/util.js';
 import * as orders from '../lib/orders.js';
 import * as andreani from '../integrations/andreani.js';
-import { customerFrom, loginLimiter } from '../lib/auth.js';
+import { customerFrom, staffFrom, loginLimiter } from '../lib/auth.js';
 import { saveCart, cartByToken } from '../lib/carts.js';
 import { unsubscribeToken } from '../lib/mail.js';
 import { run } from '../lib/db.js';
@@ -143,7 +143,7 @@ store.get('/reviews', wrap(async (req, res) => {
 }));
 
 // ── Probador virtual ──
-store.post('/tryon', wrap(async (req, res) => res.json(await tryon.startTryon(req.body || {}, req.ip))));
+store.post('/tryon', wrap(async (req, res) => res.json(await tryon.startTryon(req.body || {}, req.ip, customerFrom(req), staffFrom(req)))));
 store.get('/tryon/:id', wrap(async (req, res) => { res.set('Cache-Control', 'no-store'); res.json(await tryon.pollTryon(req.params.id)); }));
-store.post('/tryon/log', (req, res) => res.json(tryon.logOwnTry(req.body?.productId, req.ip)));
+store.post('/tryon/log', (req, res) => res.json(tryon.logOwnTry(req.body?.productId, req.ip, customerFrom(req), staffFrom(req))));
 store.post('/tryon/added', (req, res) => { tryon.markAdded(req.body?.log); res.json({ ok: true }); });

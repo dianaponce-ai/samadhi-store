@@ -25,10 +25,14 @@ CREATE TABLE IF NOT EXISTS tryon_log (
 );
 CREATE INDEX IF NOT EXISTS tryon_log_at ON tryon_log(at);
 `);
+// Quién se probó cada prenda (clienta con cuenta). Las fotos no se guardan nunca.
+if (!all('PRAGMA table_info(tryon_log)').some((c) => c.name === 'customer_id')) db.exec('ALTER TABLE tryon_log ADD COLUMN customer_id INTEGER; CREATE INDEX IF NOT EXISTS tryon_log_customer ON tryon_log(customer_id);');
 
 const API = 'https://api.fashn.ai/v1';
 // engine: 'samadhi' (motor propio, en el navegador), 'gemini' (IA de Google) o 'fashn' (IA de FASHN). Los dos últimos se pagan por imagen.
-export const TRYON_DEFAULTS = { enabled: true, engine: 'gemini', dailyLimit: 300, perHour: 12, mode: 'balanced', hiddenCategories: null };
+export const TRYON_DEFAULTS = { enabled: true, engine: 'gemini', dailyLimit: 300, perHour: 12, mode: 'balanced', hiddenCategories: null, requireLogin: true };
+/** Si el probador pide cuenta y no hay sesión, corta con un código que la tienda entiende. */
+function needLogin(customer, staff) { if (tryonSettings().requireLogin && !customer && !staff) throw new HttpError(401, 'Para usar el probador virtual ingresá a tu cuenta (o creala, es gratis).', { code: 'login' }); }
 const ACCESSORY = /acces|bolso|cartera|cintur|bijou|aros|collar|pa[ñn]uelo|sombrero|gorro|lentes|calzado|zapat|bota|sandal|media/i;
 
 export function tryonSettings() { return { ...TRYON_DEFAULTS, ...getSetting('tryon') }; }
@@ -43,29 +47,31 @@ export function publicTryon() {
   const s = tryonSettings();
   if (s.engine === 'gemini' && !tryonMock('gemini')) {
     // Las prendas del motor propio viajan igual: si la IA no responde, la tienda vuelve al probador propio.
-    return { enabled: !!s.enabled, engine: 'gemini', hidden: hiddenCategories(), garments: publicGarments() };
+    return { enabled: !!s.enabled, engine: 'gemini', hidden: hiddenCategories(), garments: publicGarments(), requireLogin: !!s.requireLogin };
   }
   if (s.engine !== 'fashn') {
     const garments = publicGarments();
-    return { enabled: !!s.enabled && Object.keys(garments).length > 0, engine: 'samadhi', garments, hidden: [] };
+    return { enabled: !!s.enabled && Object.keys(garments).length > 0, engine: 'samadhi', garments, hidden: [], requireLogin: !!s.requireLogin };
   }
-  return { enabled: !!s.enabled && (!tryonMock() || !config.production), engine: 'fashn', mock: tryonMock(), hidden: hiddenCategories() };
+  return { enabled: !!s.enabled && (!tryonMock() || !config.production), engine: 'fashn', mock: tryonMock(), hidden: hiddenCategories(), requireLogin: !!s.requireLogin };
 }
 /** Uso del motor propio (no viaja ninguna foto: sólo qué prenda se probó). */
-export function logOwnTry(productId, ip) {
+export function logOwnTry(productId, ip, customer = null, staff = null) {
+  needLogin(customer, staff);
   if (!get('SELECT id FROM products WHERE id = ?', Number(productId))) throw new HttpError(404, 'No encontramos esa prenda.');
   const who = whoHash(ip);
   if (get("SELECT COUNT(*) n FROM tryon_log WHERE who = ? AND at > datetime('now','-1 hour')", who).n > 200) return { log: null };
-  return { log: Number(run("INSERT INTO tryon_log(product_id, who, status, ms) VALUES(?, ?, 'propio', 0)", Number(productId), who).lastInsertRowid) };
+  return { log: Number(run("INSERT INTO tryon_log(product_id, who, status, ms, customer_id) VALUES(?, ?, 'propio', 0, ?)", Number(productId), who, customer?.id || null).lastInsertRowid) };
 }
 
 const jobs = new Map(); // id → { fashnId, logId, started, productId }
 const whoHash = (ip) => crypto.createHmac('sha256', config.sessionSecret).update('tryon:' + ip).digest('base64url').slice(0, 16);
 const abs = (u) => (/^https?:/.test(u) ? u : `${config.publicUrl}/${String(u).replace(/^\//, '')}`);
 
-export async function startTryon({ productId, image = 0, photo, photoSize }, ip) {
+export async function startTryon({ productId, image = 0, photo, photoSize }, ip, customer = null, staff = null) {
   const s = tryonSettings();
   if (!s.enabled) throw new HttpError(403, 'El probador virtual no está disponible en este momento.');
+  needLogin(customer, staff);
   const p = get('SELECT id, name FROM products WHERE id = ? AND visible = 1', Number(productId));
   if (!p) throw new HttpError(404, 'No encontramos esa prenda.');
   const imgs = all('SELECT url FROM images WHERE product_id = ? ORDER BY position', p.id);
@@ -77,7 +83,7 @@ export async function startTryon({ productId, image = 0, photo, photoSize }, ip)
   if (get("SELECT COUNT(*) n FROM tryon_log WHERE at > datetime('now','-1 day')").n >= s.dailyLimit) throw new HttpError(429, 'El probador llegó al límite de hoy. Volvé a probar mañana.');
   if (get("SELECT COUNT(*) n FROM tryon_log WHERE who = ? AND at > datetime('now','-1 hour')", who).n >= s.perHour) throw new HttpError(429, 'Probaste muchas prendas seguidas. Esperá un rato y seguí.');
 
-  const logId = Number(run('INSERT INTO tryon_log(product_id, who) VALUES(?, ?)', p.id, who).lastInsertRowid);
+  const logId = Number(run('INSERT INTO tryon_log(product_id, who, customer_id) VALUES(?, ?, ?)', p.id, who, customer?.id || null).lastInsertRowid);
   const id = crypto.randomBytes(12).toString('base64url');
   if (s.engine === 'gemini' && tryonMock('gemini')) throw new HttpError(503, 'El probador con IA no está configurado.', { code: 'sin-clave' });
   if (tryonMock()) {
@@ -155,6 +161,30 @@ export async function pollTryon(id) {
   if (Date.now() - j.started > 120e3) { finish('error', 'tiempo agotado'); jobs.delete(id); throw new HttpError(504, 'Tardó demasiado. Probá de nuevo.'); }
   return { status: d.status || 'processing' };
 }
+/** Quién se probó qué: clientas con cuenta, sus prendas y si después las sumaron a la bolsa. */
+export function tryonPeople({ days = 30, q = '', customerId = null } = {}) {
+  const since = `-${Math.min(365, Math.max(1, Number(days) || 30))} days`;
+  const where = ["t.at > datetime('now', ?)", "t.status IN ('lista','prueba','propio')", 't.customer_id IS NOT NULL'];
+  const params = [since];
+  if (customerId) { where.push('t.customer_id = ?'); params.push(Number(customerId)); }
+  if (q) { where.push('(c.name LIKE ? OR c.email LIKE ? OR p.name LIKE ?)'); params.push(`%${q}%`, `%${q}%`, `%${q}%`); }
+  const rows = all(`SELECT t.id, t.at, t.added, t.product_id, p.name product, p.slug, c.id customer_id, c.name, c.email, c.phone,
+      (SELECT url FROM images WHERE product_id = p.id ORDER BY position LIMIT 1) image
+    FROM tryon_log t JOIN customers c ON c.id = t.customer_id LEFT JOIN products p ON p.id = t.product_id
+    WHERE ${where.join(' AND ')} ORDER BY t.at DESC LIMIT 2000`, ...params);
+  const people = new Map();
+  for (const r of rows) {
+    const k = r.customer_id;
+    const x = people.get(k) || { customer_id: k, name: r.name, email: r.email, phone: r.phone, tries: 0, added: 0, last: r.at, products: new Map() };
+    x.tries++; x.added += r.added ? 1 : 0;
+    const pr = x.products.get(r.product_id) || { product_id: r.product_id, name: r.product || 'Prenda borrada', image: r.image, times: 0, added: 0, last: r.at };
+    pr.times++; pr.added += r.added ? 1 : 0;
+    x.products.set(r.product_id, pr); people.set(k, x);
+  }
+  const anon = get(`SELECT COUNT(*) n FROM tryon_log WHERE at > datetime('now', ?) AND status IN ('lista','prueba','propio') AND customer_id IS NULL`, since).n;
+  return { people: [...people.values()].map((x) => ({ ...x, products: [...x.products.values()] })), recent: rows.slice(0, 200), anonymous: anon };
+}
+
 export function markAdded(logId) { run('UPDATE tryon_log SET added = 1 WHERE id = ?', Number(logId)); }
 
 export function tryonStats() {

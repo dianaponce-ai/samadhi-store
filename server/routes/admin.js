@@ -291,7 +291,7 @@ admin.get('/customers', (req, res) => {
 admin.get('/customers/:id', (req, res) => {
   const c = get('SELECT * FROM customers WHERE id = ?', int(req.params.id));
   if (!c) throw new HttpError(404, 'No encontramos esa clienta.');
-  res.json({ ...c, orders: all('SELECT id, number, total, status, created_at FROM orders WHERE customer_id = ? ORDER BY id DESC', c.id) });
+  res.json({ ...c, password_hash: undefined, orders: all('SELECT id, number, total, status, created_at FROM orders WHERE customer_id = ? ORDER BY id DESC', c.id), tryons: tryon.tryonPeople({ days: 365, customerId: c.id }).recent });
 });
 admin.put('/customers/:id', (req, res) => {
   run('UPDATE customers SET notes = ? WHERE id = ?', String(req.body?.notes || ''), int(req.params.id));
@@ -537,12 +537,14 @@ admin.put('/tryon', onlyAdmin, (req, res) => {
     mode: ['performance', 'balanced', 'quality'].includes(b.mode) ? b.mode : cur.mode,
     engine: ['samadhi', 'fashn', 'gemini'].includes(b.engine) ? b.engine : cur.engine,
     hiddenCategories: Array.isArray(b.hiddenCategories) ? b.hiddenCategories.map(Number) : cur.hiddenCategories,
+    requireLogin: b.requireLogin === undefined ? cur.requireLogin : !!b.requireLogin,
   });
   invalidateCatalog();
   res.json({ ok: true });
 });
 
 // Prendas del probador propio.
+admin.get('/tryon/people', (req, res) => res.json(tryon.tryonPeople({ days: req.query.days, q: String(req.query.q || '').slice(0, 80), customerId: req.query.customer ? int(req.query.customer) : null })));
 admin.get('/tryon/garments', (req, res) => res.json(probador.adminGarments()));
 admin.put('/tryon/garments/:id', (req, res) => { probador.setGarment(int(req.params.id), req.body || {}); invalidateCatalog(); res.json({ ok: true }); });
 admin.post('/tryon/garments/:id', express_json_big, (req, res) => { const r = probador.saveGarment(int(req.params.id), req.body || {}); invalidateCatalog(); res.json(r); });

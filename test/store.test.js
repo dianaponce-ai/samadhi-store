@@ -290,18 +290,24 @@ test('probador: motor propio con prendas preparadas y FASHN en modo prueba', asy
   assert.ok(['top', 'bottom', 'full'].includes(g.kind) && g.pts.length >= 4 && g.url.startsWith('/probador/'));
   assert.equal((await fetch(B + g.url)).status, 200);
   assert.equal((await fetch(B + '/vendor/mediapipe-pose/pose.js')).status, 200);
-  const lg = await json('/api/tryon/log', { method: 'POST', body: { productId: Number(ids[0]) } });
+  // Pide cuenta: sin sesión no se puede probar.
+  assert.equal(cat.tryon.requireLogin, true);
+  const anon = await json('/api/tryon/log', { method: 'POST', body: { productId: Number(ids[0]) } });
+  assert.equal(anon.status, 401); assert.equal(anon.data.code, 'login');
+  const reg = await json('/api/auth/register', { method: 'POST', body: { name: 'Paula Probador', email: 'paula.probador@prueba.com', password: 'una-clave-larga' } });
+  const ck = { cookie: reg.headers.get('set-cookie').split(';')[0] };
+  const lg = await json('/api/tryon/log', { method: 'POST', headers: ck, body: { productId: Number(ids[0]) } });
   assert.ok(lg.data.log);
   const p = cat.products.find((x) => x.images.length);
-  assert.equal((await json('/api/tryon', { method: 'POST', body: { productId: p.id, photo: 'no-es-una-foto' } })).status, 422);
+  assert.equal((await json('/api/tryon', { method: 'POST', headers: ck, body: { productId: p.id, photo: 'no-es-una-foto' } })).status, 422);
   const photo = 'data:image/jpeg;base64,' + Buffer.alloc(300 * 1024, 7).toString('base64'); // pesa más de 200 kB: prueba el límite propio de esta ruta
   // Gemini viene elegido pero sin clave: el servidor avisa para que la tienda use el motor propio.
-  const nok = await json('/api/tryon', { method: 'POST', body: { productId: p.id, image: 0, photo } });
+  const nok = await json('/api/tryon', { method: 'POST', headers: ck, body: { productId: p.id, image: 0, photo } });
   assert.equal(nok.status, 503);
   assert.equal(nok.data.code, 'sin-clave');
   { const l = await json('/api/admin/login', { method: 'POST', body: { email: 'test@samadhi.local', password: 'clave-de-prueba-123' } });
     await json('/api/admin/tryon', { method: 'PUT', headers: { cookie: l.headers.get('set-cookie').split(';')[0], 'x-samadhi-admin': '1' }, body: { engine: 'fashn', enabled: true } }); }
-  const st = await json('/api/tryon', { method: 'POST', body: { productId: p.id, image: 0, photo } });
+  const st = await json('/api/tryon', { method: 'POST', headers: ck, body: { productId: p.id, image: 0, photo } });
   assert.equal(st.status, 200);
   assert.ok(st.data.id && st.data.mock);
   assert.equal((await json('/api/tryon/' + st.data.id)).data.status, 'processing');
@@ -310,6 +316,9 @@ test('probador: motor propio con prendas preparadas y FASHN en modo prueba', asy
   assert.equal(done.data.status, 'completed');
   await json('/api/tryon/added', { method: 'POST', body: { log: done.data.log } });
   const login = await json('/api/admin/login', { method: 'POST', body: { email: 'test@samadhi.local', password: 'clave-de-prueba-123' } });
+  { const pe = await json('/api/admin/tryon/people', { headers: { cookie: login.headers.get('set-cookie').split(';')[0] } });
+    const who = pe.data.people.find((x) => x.email === 'paula.probador@prueba.com');
+    assert.ok(who && who.tries >= 2 && who.products.length >= 1, 'el panel muestra quién se probó qué'); }
   const H = { cookie: login.headers.get('set-cookie').split(';')[0], 'x-samadhi-admin': '1' };
   const a = await json('/api/admin/tryon', { headers: H });
   assert.equal(a.data.stats.month, 2);

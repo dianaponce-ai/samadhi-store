@@ -708,7 +708,7 @@ async function loadSession() {
 function openAccount() {
   if (session.staff) return goPanel();
   acct.view = session.customer ? 'account' : 'login';
-  acct.error = ''; acct.errors = {};
+  acct.error = ''; acct.errors = {}; acct.notice = ''; pendingTryon = null;
   renderAccount();
   openLayer('#acct');
   if (session.customer) loadOrders();
@@ -739,7 +739,8 @@ function renderAccount() {
   if (acct.view === 'login' || acct.view === 'register') {
     const reg = acct.view === 'register';
     $('#acct').innerHTML = h(reg ? 'Crear cuenta' : 'Ingresar') + `<div class="dbody"><form class="co" id="authForm" novalidate>
-      <p class="note">${reg ? 'Guardá tus datos para comprar más rápido y seguí tus pedidos.' : 'Con tu cuenta ves tus pedidos y comprás más rápido. Si sos del equipo, entrás al panel.'}</p>
+      ${acct.notice ? `<div class="tr-login-note"><b>Probador virtual</b>${esc(acct.notice)}</div>` : ''}
+      <p class="note">${reg ? 'Guardá tus datos para comprar más rápido, seguí tus pedidos y usá el probador virtual.' : 'Con tu cuenta ves tus pedidos, comprás más rápido y usás el probador virtual. Si sos del equipo, entrás al panel.'}</p>
       ${alert}
       ${reg ? fl('name', 'Nombre y apellido', 'autocomplete="name"') : ''}
       ${fl('email', 'Email', 'type="email" autocomplete="username" inputmode="email"')}
@@ -815,6 +816,7 @@ function bindAccount() {
         await loadSession();
         if (r.type === 'staff') { toast(`Hola, ${(r.name || '').split(' ')[0]} · ${r.roleLabel}`); goPanel(); return; }
         toast(`Hola, ${(r.name || '').split(' ')[0]}`);
+        if (pendingTryon) return resumeTryon();
         acct.view = 'account'; acct.tab = 'pedidos'; acct.orders = null; renderAccount(); loadOrders();
       } catch (err) { acct.busy = false; acct.error = err.message; acct.errors = err.data?.errors || {}; renderAccount(); }
     }
@@ -1176,8 +1178,19 @@ async function engine() {
 }
 const loadImg = (src) => new Promise((ok, bad) => { const i = new Image(); i.crossOrigin = 'anonymous'; i.onload = () => ok(i); i.onerror = () => bad(new Error('No pudimos cargar la imagen.')); i.src = src; });
 
+// El probador pide cuenta: si no hay sesión se abre el ingreso y, al entrar, vuelve al probador con la misma prenda.
+let pendingTryon = null;
+function tryonNeedsLogin() { return CAT.tryon?.requireLogin && !session.customer && !session.staff; }
+function askLoginForTryon(p, img) {
+  pendingTryon = { p, img };
+  closeLayers();
+  acct.view = 'login'; acct.error = ''; acct.errors = {}; acct.notice = 'Para usar el probador virtual ingresá a tu cuenta. Si todavía no tenés, creala en un minuto: es gratis.';
+  renderAccount(); openLayer('#acct');
+}
+function resumeTryon() { if (!pendingTryon || tryonNeedsLogin()) return; const { p, img } = pendingTryon; pendingTryon = null; acct.notice = ''; closeLayers(); openTryon(p, img); }
 function openTryon(p, img = 0) {
   if (!CAT.tryon?.enabled) return;
+  if (tryonNeedsLogin()) return askLoginForTryon(p, img);
   tr.p = p && tryonOk(p) ? p : null; tr.img = img; tr.error = ''; tr.note = ''; tr.result = null; tr.mock = false; tr.base = tr.photo; tr.picking = !tr.p; tr.size = '';
   if (!own()) tr.look = [];
   tr.status = tr.photo ? 'ready' : 'photo';
@@ -1227,7 +1240,7 @@ async function addToLook(p) {
     tr.look = tr.look.filter((x) => x.p.id !== p.id && !(g.kind === 'full' || x.kind === 'full' || x.kind === g.kind));
     tr.look.push(item);
     tr.note = E.checkBody(tr.body, g.kind) || '';
-    api('/api/tryon/log', { productId: p.id }).then((r) => { item.log = r.log; }).catch(() => {});
+    api('/api/tryon/log', { productId: p.id }).then((r) => { item.log = r.log; }).catch((err) => { if (err.data?.code === 'login') askLoginForTryon(p, tr.img); });
     drawLook();
   } catch (e) { tr.error = e.message; }
   tr.status = 'ready'; tr.picking = false; renderTryon();
@@ -1363,6 +1376,7 @@ async function runTryon() {
       if (!tryonOk(tr.p)) { tr.picking = true; return renderTryon(); }
       return analyzePhoto();
     }
+    if (e.data?.code === 'login') { await loadSession(); return askLoginForTryon(tr.p, tr.img); }
     tr.error = e.message;
     if (e.data?.detail) console.warn('Probador:', e.data.detail); // queda en la consola del navegador, no se le muestra a la clienta
   }

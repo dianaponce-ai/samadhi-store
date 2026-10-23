@@ -414,6 +414,7 @@ async function viewCustomer(id) {
     <div class="grid g3"><div class="tablewrap"><table><thead><tr><th>Pedido</th><th>Fecha</th><th>Estado</th><th class="r">Total</th></tr></thead><tbody>
       ${c.orders.map((o) => `<tr class="click" data-href="#pedido/${o.id}"><td><b>${esc(o.number)}</b></td><td class="small">${date(o.created_at)}</td><td>${pill(o.status)}</td><td class="r n">${fmt(o.total)}</td></tr>`).join('')}</tbody></table></div>
     <div class="grid" style="align-content:start"><div class="card"><h2>Contacto</h2><dl class="kv"><dt>Email</dt><dd>${esc(c.email)}</dd><dt>Teléfono</dt><dd>${esc(c.phone)}</dd><dt>DNI</dt><dd>${esc(c.dni)}</dd></dl></div>
+    ${c.tryons?.length ? `<div class="card"><h2>Probador virtual</h2><ul style="list-style:none;margin:0;padding:0;display:grid;gap:8px">${c.tryons.slice(0, 30).map((t) => `<li style="display:flex;gap:10px;align-items:center">${t.image ? `<img class="thumb" src="${esc(thumb(t.image))}" alt="">` : ''}<span><a class="linkish" href="#producto/${t.product_id}">${esc(t.product || 'Prenda borrada')}</a><span class="small muted" style="display:block">${date(t.at)}${t.added ? ' · la sumó a la bolsa' : ''}</span></span></li>`).join('')}</ul></div>` : ''}
     <div class="card"><h2>Notas</h2><textarea id="cnotes" rows="4" placeholder="Talles, preferencias, lo que sirva para atenderla mejor.">${esc(c.notes)}</textarea><div class="actions" style="margin-top:8px"><button class="btn sm" id="csave">Guardar</button></div></div></div></div>`;
   $('#csave').onclick = async () => { try { await api('/customers/' + id, { method: 'PUT', body: { notes: $('#cnotes').value } }); toast('Notas guardadas'); } catch (e) { toast(e.message, true); } };
 }
@@ -829,7 +830,7 @@ async function viewStats() {
 let PROB = null;
 const probEngine = async () => PROB || (PROB = window.__PROBADOR || (await import('/assets/probador-engine.js')));
 const KIND_ES = { top: 'Arriba', bottom: 'Abajo', full: 'Entera' };
-const tryTab = { tab: 'prendas', filter: 'todas', q: '' };
+const tryTab = { tab: 'personas', filter: 'todas', q: '', days: 30, pq: '' };
 // Las fotos de Tiendanube se piden a través de la tienda para poder leer sus píxeles.
 const proxied = (u) => (/^https:\/\/acdn(-us)?\.mitiendanube\.com\//.test(u) && !EMBED ? '/api/admin/img-proxy?u=' + encodeURIComponent(u) : u);
 const loadImage = (src) => new Promise((ok, bad) => { const i = new Image(); i.crossOrigin = 'anonymous'; i.onload = () => ok(i); i.onerror = () => bad(new Error('No pudimos cargar la foto.')); i.src = src; });
@@ -852,13 +853,32 @@ async function viewTryon() {
   SEG = !!d.segmentation;
   const own = S.engine === 'samadhi';
   const conv = st.month ? Math.round((st.added / st.month) * 100) : 0;
-  const tabs = [['prendas', 'Prendas'], ['uso', 'Uso'], ...(isAdmin() ? [['ajustes', 'Ajustes']] : [])];
+  const tabs = [['personas', 'Quién se probó'], ['prendas', 'Prendas'], ['uso', 'Uso'], ...(isAdmin() ? [['ajustes', 'Ajustes']] : [])];
   $('#view').innerHTML = `
     <div class="page-head"><div><h1>Probador</h1><div class="sub">${own ? 'Motor propio: corre en el celular de la clienta, sin costo por prueba y sin que su foto salga del dispositivo.' : S.engine === 'gemini' ? 'IA de Google (Gemini): genera una foto de la clienta con la prenda puesta. Se paga por imagen.' : 'Motor FASHN: imagen generada con IA, 1 crédito por prueba.'}</div></div></div>
     <div class="seg" role="tablist" style="margin-bottom:14px">${tabs.map(([k, l]) => `<button type="button" role="tab" data-ttab="${k}" aria-pressed="${tryTab.tab === k}">${l}</button>`).join('')}</div>
     <div id="tryPane"></div>`;
   $$('[data-ttab]').forEach((b) => (b.onclick = () => { tryTab.tab = b.dataset.ttab; viewTryon(); }));
   const pane = $('#tryPane');
+  if (tryTab.tab === 'personas') {
+    pane.innerHTML = `<div class="toolbar"><input id="tpq" placeholder="Buscar por clienta, email o prenda" value="${esc(tryTab.pq)}"><select id="tpd">${[[7, 'Últimos 7 días'], [30, 'Últimos 30 días'], [90, 'Últimos 90 días'], [365, 'Último año']].map(([v, l]) => `<option value="${v}" ${tryTab.days === v ? 'selected' : ''}>${l}</option>`).join('')}</select></div><div id="tpl"><p class="muted">Cargando…</p></div>`;
+    const load = async () => {
+      const r = await api(`/tryon/people?days=${tryTab.days}&q=${encodeURIComponent(tryTab.pq)}`);
+      $('#tpl').innerHTML = `${!S.requireLogin ? '<div class="notice">El probador está abierto a cualquier visitante: solo aparecen acá quienes lo usaron con su cuenta. Para que pida cuenta siempre, activalo en Ajustes.</div>' : ''}
+        <div class="grid g3" style="margin-bottom:14px"><div class="card kpi accent"><div class="l">Clientas que lo usaron</div><div class="v">${num(r.people.length)}</div><div class="l">en el período</div></div>
+          <div class="card kpi"><div class="l">Pruebas con cuenta</div><div class="v">${num(r.people.reduce((a, x) => a + x.tries, 0))}</div><div class="l">${num(r.people.reduce((a, x) => a + x.added, 0))} sumadas a la bolsa</div></div>
+          <div class="card kpi"><div class="l">Pruebas sin cuenta</div><div class="v">${num(r.anonymous)}</div><div class="l">${S.requireLogin ? 'de antes de pedir cuenta' : 'visitantes sin ingresar'}</div></div></div>
+        ${r.people.length ? `<div class="card tablewrap"><table><thead><tr><th>Clienta</th><th>Prendas que se probó</th><th class="r">Pruebas</th><th class="r">A la bolsa</th><th>Última vez</th></tr></thead><tbody>
+          ${r.people.map((x) => `<tr><td><a class="linkish" href="#cliente/${x.customer_id}"><b>${esc(x.name)}</b></a><div class="small muted">${esc(x.email)}${x.phone ? ` · ${esc(x.phone)}` : ''}</div></td>
+            <td><div style="display:flex;flex-wrap:wrap;gap:8px">${x.products.slice(0, 8).map((p) => `<a href="#producto/${p.product_id}" title="${esc(p.name)} · ${p.times} ${p.times === 1 ? 'vez' : 'veces'}${p.added ? ' · la sumó a la bolsa' : ''}" style="display:flex;gap:6px;align-items:center;text-decoration:none;border:1px solid var(--line);border-radius:8px;padding:3px 8px 3px 3px;font-size:12px${p.added ? ';border-color:var(--ok)' : ''}">${p.image ? `<img class="thumb" src="${esc(thumb(p.image))}" alt="" style="width:28px;height:36px">` : ''}<span>${esc(p.name)}${p.times > 1 ? ` ×${p.times}` : ''}</span></a>`).join('')}${x.products.length > 8 ? `<span class="small muted">+${x.products.length - 8} más</span>` : ''}</div></td>
+            <td class="r n">${num(x.tries)}</td><td class="r n">${num(x.added)}</td><td class="small">${date(x.last)}</td></tr>`).join('')}</tbody></table></div>
+          <p class="small muted" style="margin-top:8px">Con borde verde: la prenda que después sumó a la bolsa. Las fotos de las clientas no se guardan; acá solo queda qué prenda se probó y cuándo.</p>` : '<div class="empty card">Todavía nadie usó el probador con su cuenta en este período.</div>'}`;
+    };
+    let t; $('#tpq').oninput = (e) => { tryTab.pq = e.target.value; clearTimeout(t); t = setTimeout(load, 250); };
+    $('#tpd').onchange = (e) => { tryTab.days = Number(e.target.value); load(); };
+    load();
+    return;
+  }
   if (tryTab.tab === 'uso') {
     pane.innerHTML = `<div class="grid g4" style="margin-bottom:14px">
       <div class="card kpi accent"><div class="l">Pruebas hoy</div><div class="v">${num(st.today)}</div><div class="l">${own ? 'sin costo' : `límite ${num(S.dailyLimit)} por día`}</div></div>
@@ -872,6 +892,7 @@ async function viewTryon() {
   if (tryTab.tab === 'ajustes') {
     pane.innerHTML = `<form class="card" id="trSet" style="max-width:760px"><h2>Ajustes</h2>
       <label class="fl" style="flex-direction:row;align-items:center;gap:10px;margin-bottom:14px"><label class="switch"><input type="checkbox" name="enabled" ${S.enabled ? 'checked' : ''}><span></span></label><span>Mostrar el probador en la tienda</span></label>
+      <label class="fl" style="flex-direction:row;align-items:center;gap:10px;margin-bottom:14px"><label class="switch"><input type="checkbox" name="requireLogin" ${S.requireLogin ? 'checked' : ''}><span></span></label><span>Pedir cuenta para usarlo <span class="small muted">(así sabés quién se probó cada prenda y evitás abusos)</span></span></label>
       <div class="fl"><span>Motor</span>
         <label class="radio-card"><input type="radio" name="engine" value="gemini" ${S.engine === 'gemini' ? 'checked' : ''}><span><b>Google Gemini (IA generativa)</b><small>Foto realista de la clienta con la prenda, en unos 10–20 segundos. Cuesta entre USD 0,03 y 0,07 por imagen. ${S.engine === 'gemini' && d.mock ? 'Falta GEMINI_API_KEY en el archivo .env.' : 'Si la IA no responde, la tienda usa el motor propio.'}</small></span></label>
         <label class="radio-card"><input type="radio" name="engine" value="samadhi" ${own ? 'checked' : ''}><span><b>Samadhi (propio)</b><small>Gratis e ilimitado. Calza las prendas preparadas sobre la foto o en vivo con la cámara. Es una simulación 2D: sirve para ver combinaciones y largos.</small></span></label>
@@ -882,7 +903,7 @@ async function viewTryon() {
       <button class="btn primary" type="submit" style="margin-top:12px">Guardar</button></form>`;
     $('#trSet').onsubmit = async (e) => {
       e.preventDefault(); const f = e.target;
-      try { await api('/tryon', { method: 'PUT', body: { enabled: f.enabled.checked, engine: f.engine.value, dailyLimit: f.dailyLimit.value, perHour: f.perHour.value, mode: f.mode.value } }); toast('Ajustes guardados'); viewTryon(); }
+      try { await api('/tryon', { method: 'PUT', body: { enabled: f.enabled.checked, requireLogin: f.requireLogin.checked, engine: f.engine.value, dailyLimit: f.dailyLimit.value, perHour: f.perHour.value, mode: f.mode.value } }); toast('Ajustes guardados'); viewTryon(); }
       catch (err) { toast(err.message, true); }
     };
     return;

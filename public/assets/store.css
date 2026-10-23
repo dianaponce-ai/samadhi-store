@@ -589,3 +589,6 @@ footer ul button { font-size: 13px; text-align: left; }
   *, *::before, *::after { transition-duration: .01ms !important; animation: none !important; }
   .slide .bg, .band .bg { transform: none !important; }
 }
+
+.tr-login-note { display: grid; gap: 4px; padding: 14px 16px; background: var(--marfil); border-left: 2px solid var(--oliva); font-size: 14px; }
+.tr-login-note b { font-family: var(--serif); font-size: 19px; font-weight: 500; }

@@ -1,6 +1,6 @@
 // Servidor de prueba para la vista previa: responde las mismas rutas que server/ pero en el navegador,
 // con el catálogo real y pedidos de ejemplo. Los cambios se guardan solo en este navegador.
-const KEY = 'samadhi-demo-v9';
+const KEY = 'samadhi-demo-v10';
 const SEED = window.SAMADHI_EMBED;
 const DEMO_USERS = window.__SAMADHI_DEMO_USERS;
 
@@ -23,7 +23,7 @@ const slugify = (s) => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]
 // ── Estado inicial ─────────────────────────────────────
 function seedState() {
   const st = {
-    v: 9,
+    v: 10,
     products: SEED.products.map((p, i) => ({
       id: p.id, slug: p.slug, name: p.name, ref_code: p.ref || '', description: p.desc || '', collection: p.collection || '',
       visible: 1, featured: p.featured ? 1 : 0, free_shipping: p.freeShipping ? 1 : 0, position: i, weight_kg: 0.5, height_cm: 5, width_cm: 30, depth_cm: 30,
@@ -38,7 +38,7 @@ function seedState() {
         origin: { calle: '', numero: '', codigoPostal: '', localidad: '', region: 'AR-B', pais: 'Argentina' }, sender: { nombreCompleto: 'Samadhi Style', email: '', documentoTipo: 'CUIT', documentoNumero: '', telefono: '' } },
       payments: { installments: 3, transferEnabled: true, transferDiscount: 10, bankHolder: 'Samadhi Style (ejemplo)', bankName: 'Banco de ejemplo', bankCbu: '0000003100000000000001', bankAlias: 'SAMADHI.STYLE.EJEMPLO', transferHours: 48 },
       checkout: { requireDni: true, orderPrefix: 'S', nextOrderNumber: 1001 },
-      tryon: { enabled: true, engine: 'gemini', dailyLimit: 300, perHour: 12, mode: 'balanced', hiddenCategories: null },
+      tryon: { enabled: true, engine: 'gemini', dailyLimit: 300, perHour: 12, mode: 'balanced', hiddenCategories: null, requireLogin: true },
       content: { ...window.__CONTENT.CONTENT_DEFAULTS, faq: window.__CONTENT.CONTENT_DEFAULTS.faq.map((x) => ({ ...x })) },
       emails: { enabled: Object.fromEntries(Object.keys(window.__EMAIL.TEMPLATES).map((k) => [k, true])), paymentReminderHours: 24, transferReminderHoursBefore: 12, pickupReminderDays: 3, cartReminder1Hours: 1, cartReminder2Hours: 48, staffEmails: 'admin@samadhistyle.com.ar' },
     },
@@ -61,7 +61,8 @@ function seedState() {
     const r = rnd(77), pool = st.products.filter((p) => p.visible && p.images.length && !/acces|bolso|cintur/i.test(p.name));
     for (let i = 0; i < 140; i++) {
       const p = pool[Math.floor(r() ** 2 * pool.length)];
-      st.tryons.push({ id: i + 1, at: sqlDate(new Date(Date.now() - r() * 30 * 864e5)), product_id: p.id, status: r() < 0.06 ? 'error' : 'lista', ms: 6500 + Math.round(r() * 4000), added: r() < 0.27 ? 1 : 0 });
+      const cu = st.customers.length && r() < 0.8 ? st.customers[Math.floor(r() * Math.min(18, st.customers.length))] : null;
+      st.tryons.push({ id: i + 1, at: sqlDate(new Date(Date.now() - r() * 30 * 864e5)), product_id: p.id, status: r() < 0.06 ? 'error' : 'lista', ms: 6500 + Math.round(r() * 4000), added: r() < 0.27 ? 1 : 0, customer_id: cu?.id || null });
     }
   }
   { // Un arrepentimiento de ejemplo, para ver la sección en el panel.
@@ -276,6 +277,23 @@ const variantById = (id) => { for (const p of S.products) { const v = p.variants
 const labelOf = (v) => [v.color, v.size && `Talle ${v.size}`, v.other].filter(Boolean).join(' · ');
 const staffMe = () => S.staff.find((u) => u.id === S.session.staff) || null;
 const customerMe = () => S.customers.find((c) => c.id === S.session.customer && c.password) || null;
+function tryonLogin() { if (S.settings.tryon.requireLogin !== false && !customerMe() && !S.session.staff) fail(401, 'Para usar el probador virtual ingresá a tu cuenta (o creala, es gratis).', { code: 'login' }); }
+function tryonPeople(days, q, customerId) {
+  const since = Date.now() - days * 864e5;
+  let rows = S.tryons.filter((t) => t.customer_id && ['lista', 'prueba', 'propio'].includes(t.status) && Date.parse(t.at.replace(' ', 'T') + 'Z') > since && (!customerId || t.customer_id === customerId))
+    .map((t) => { const c = S.customers.find((x) => x.id === t.customer_id) || {}; const p = S.products.find((x) => x.id === t.product_id) || {}; return { id: t.id, at: t.at, added: t.added, product_id: t.product_id, product: p.name || 'Prenda borrada', image: p.images?.[0] || null, customer_id: t.customer_id, name: c.name || '', email: c.email || '', phone: c.phone || '' }; })
+    .sort((a, z) => z.at.localeCompare(a.at));
+  if (q) { const k = q.toLowerCase(); rows = rows.filter((r) => `${r.name} ${r.email} ${r.product}`.toLowerCase().includes(k)); }
+  const people = new Map();
+  for (const r of rows) {
+    const x = people.get(r.customer_id) || { customer_id: r.customer_id, name: r.name, email: r.email, phone: r.phone, tries: 0, added: 0, last: r.at, products: new Map() };
+    x.tries++; x.added += r.added ? 1 : 0;
+    const pr = x.products.get(r.product_id) || { product_id: r.product_id, name: r.product, image: r.image, times: 0, added: 0, last: r.at };
+    pr.times++; pr.added += r.added ? 1 : 0; x.products.set(r.product_id, pr); people.set(r.customer_id, x);
+  }
+  const anonymous = S.tryons.filter((t) => !t.customer_id && ['lista', 'prueba', 'propio'].includes(t.status) && Date.parse(t.at.replace(' ', 'T') + 'Z') > since).length;
+  return { people: [...people.values()].map((x) => ({ ...x, products: [...x.products.values()] })), recent: rows.slice(0, 200), anonymous };
+}
 
 function tryonHidden() {
   const h = S.settings.tryon.hiddenCategories;
@@ -298,9 +316,9 @@ function publicCatalog() {
     banners: S.banners.filter((b) => b.active).sort((a, b) => a.position - b.position),
     store: { name: st.store.name, tagline: st.store.tagline, instagram: st.store.instagram, whatsapp: st.store.whatsapp, email: st.store.email, announcement: st.store.announcement, spaUrl: st.store.spaUrl || 'https://casa-samadhi.vercel.app' },
     shipping: { pickup: st.shipping.pickupEnabled ? { address: st.shipping.pickupAddress, hours: st.shipping.pickupHours } : null, freeShippingFrom: st.shipping.freeShippingFrom || 0, domicilio: !!st.shipping.andreaniDomicilio, sucursal: !!st.shipping.andreaniSucursal },
-    tryon: S.settings.tryon.engine === 'fashn' ? { enabled: S.settings.tryon.enabled, engine: 'fashn', mock: true, hidden: tryonHidden() }
+    tryon: { requireLogin: S.settings.tryon.requireLogin !== false, ...(S.settings.tryon.engine === 'fashn' ? { enabled: S.settings.tryon.enabled, engine: 'fashn', mock: true, hidden: tryonHidden() }
       : S.settings.tryon.engine === 'gemini' ? { enabled: S.settings.tryon.enabled, engine: 'gemini', hidden: tryonHidden(), garments: Object.fromEntries(Object.entries(S.garments).filter(([id, g]) => g.status === 'aprobada').map(([id, { status, source, ...g }]) => [id, g])) }
-      : { enabled: S.settings.tryon.enabled, engine: 'samadhi', garments: Object.fromEntries(Object.entries(S.garments).filter(([id, g]) => g.status === 'aprobada' && S.products.find((p) => p.id === Number(id))?.visible).map(([id, { status, source, ...g }]) => [id, g])), hidden: [] },
+      : { enabled: S.settings.tryon.enabled, engine: 'samadhi', garments: Object.fromEntries(Object.entries(S.garments).filter(([id, g]) => g.status === 'aprobada' && S.products.find((p) => p.id === Number(id))?.visible).map(([id, { status, source, ...g }]) => [id, g])), hidden: [] }) },
     content: { faq: S.settings.content.faq, terms: S.settings.content.terms, returns: S.settings.content.returns, reviews: S.settings.content.reviewsEnabled },
     payments: { installments: st.payments.installments || 1, transfer: st.payments.transferEnabled ? { discount: st.payments.transferDiscount || 0 } : null },
   };
@@ -474,11 +492,12 @@ function storeRoute(method, path, q, b) {
     return { code, number: o.number, existing: false };
   }
   if (path === '/api/tryon' && method === 'POST') {
+    tryonLogin();
     const p = S.products.find((x) => x.id === Number(b.productId));
     if (!p) fail(404, 'No encontramos esa prenda.');
     if (!/^data:image\//.test(String(b.photo || ''))) fail(422, 'Subí una foto tuya de cuerpo entero (JPG o PNG).');
     const id = token();
-    const log = { id: S.tryons.length + 1, at: sqlDate(), product_id: p.id, status: 'prueba', ms: 2500, added: 0 };
+    const log = { id: S.tryons.length + 1, at: sqlDate(), product_id: p.id, status: 'prueba', ms: 2500, added: 0, customer_id: customerMe()?.id || null };
     S.tryons.push(log); tryJobs.set(id, { at: Date.now(), log: log.id });
     return { id, mock: true };
   }
@@ -489,7 +508,7 @@ function storeRoute(method, path, q, b) {
     if (Date.now() - j.at < 2500) return { status: 'processing' };
     return { status: 'completed', mock: true, log: j.log };
   }
-  if (path === '/api/tryon/log') { const log = { id: S.tryons.length + 1, at: sqlDate(), product_id: Number(b.productId), status: 'propio', ms: 0, added: 0 }; S.tryons.push(log); return { log: log.id }; }
+  if (path === '/api/tryon/log') { tryonLogin(); const log = { id: S.tryons.length + 1, at: sqlDate(), product_id: Number(b.productId), status: 'propio', ms: 0, added: 0, customer_id: customerMe()?.id || null }; S.tryons.push(log); return { log: log.id }; }
   if (path === '/api/tryon/added') { const t = S.tryons.find((x) => x.id === Number(b.log)); if (t) t.added = 1; return { ok: true }; }
   if (path === '/api/reviews') {
     if (!S.settings.content.reviewsEnabled) return { enabled: false };
@@ -739,7 +758,7 @@ function adminRoute(method, path, q, b, raw) {
   if ((m = path.match(/^\/customers\/(\d+)$/))) {
     const c = S.customers.find((x) => x.id === Number(m[1])); if (!c) fail(404, 'No encontramos esa clienta.');
     if (method === 'PUT') { c.notes = b.notes || ''; return { ok: true }; }
-    return { ...custRow(c), orders: S.orders.filter((o) => o.customer_id === c.id).sort((a, z) => z.id - a.id) };
+    return { ...custRow(c), orders: S.orders.filter((o) => o.customer_id === c.id).sort((a, z) => z.id - a.id), tryons: tryonPeople(365, '', c.id).recent };
   }
   // Cupones
   if (path === '/coupons' && method === 'GET') return [...S.coupons].sort((a, z) => z.id - a.id);
@@ -778,10 +797,12 @@ function adminRoute(method, path, q, b, raw) {
       stats: { today: S.tryons.filter((t) => ok(t) && within(t, 1)).length, month: month.length, added: month.reduce((a, t) => a + t.added, 0), errors: S.tryons.filter((t) => t.status === 'error' && within(t, 30)).length,
         avgSeconds: done.length ? Math.round(done.reduce((a, t) => a + t.ms, 0) / done.length / 100) / 10 : null, top } };
   }
+  if (path === '/tryon/people') return tryonPeople(Math.min(365, Number(q.get('days')) || 30), q.get('q') || '', q.get('customer') ? Number(q.get('customer')) : null);
   if (path === '/tryon' && method === 'PUT') {
     onlyAdmin();
     const t = S.settings.tryon;
     if (['samadhi', 'fashn', 'gemini'].includes(b.engine)) t.engine = b.engine;
+    if (b.requireLogin !== undefined) t.requireLogin = !!b.requireLogin;
     Object.assign(t, { enabled: !!b.enabled, dailyLimit: Number(b.dailyLimit) || t.dailyLimit, perHour: Number(b.perHour) || t.perHour, mode: b.mode || t.mode, hiddenCategories: Array.isArray(b.hiddenCategories) ? b.hiddenCategories : t.hiddenCategories });
     return { ok: true };
   }
@@ -904,13 +925,14 @@ window.__SAMADHI_API = async (url, { method = 'GET', body } = {}) => {
   // Probador con IA: en la demo de Vercel lo genera la función /api/probador (Google Gemini).
   if (u.pathname === '/api/tryon' && method === 'POST' && S.settings.tryon.engine === 'gemini') {
     const b = body || {}, p = S.products.find((x) => x.id === Number(b.productId));
+    if (S.settings.tryon.requireLogin !== false && !customerMe() && !S.session.staff) { const err = new Error('Para usar el probador virtual ingresá a tu cuenta (o creala, es gratis).'); err.data = { code: 'login' }; err.status = 401; throw err; }
     if (!p) { const err = new Error('No encontramos esa prenda.'); err.status = 404; throw err; }
     let r, d = {};
     try { r = await fetch('/api/probador', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ photo: b.photo, photoSize: b.photoSize, garmentUrl: b.garmentUrl, kind: b.kind || S.garments[p.id]?.kind, name: p.name }) }); d = await r.json().catch(() => ({})); }
     catch { r = null; }
     if (!r || r.status === 404 || r.status === 405 || d.code === 'sin-clave') { const err = new Error('El probador con IA no está disponible acá.'); err.data = { code: 'sin-ia' }; err.status = 503; throw err; }
     if (!r.ok || !d.image) { const err = new Error(d.error || 'No pudimos generar la imagen.'); err.data = { code: d.code, detail: d.detail || `${r.status}` }; err.status = r.status; throw err; }
-    const id = token(); const log = { id: S.tryons.length + 1, at: sqlDate(), product_id: p.id, status: 'lista', ms: 0, added: 0 };
+    const id = token(); const log = { id: S.tryons.length + 1, at: sqlDate(), product_id: p.id, status: 'lista', ms: 0, added: 0, customer_id: customerMe()?.id || null };
     S.tryons.push(log); tryJobs.set(id, { at: 0, log: log.id, image: d.image }); save();
     return { id };
   }
