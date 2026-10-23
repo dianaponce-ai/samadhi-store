@@ -905,6 +905,9 @@ function bindGlobal() {
   $('#scrim').addEventListener('click', closeLayers);
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { if (layerOpen()) closeLayers(); else closeAll(); } });
   window.addEventListener('scroll', onScroll, { passive: true });
+  // Al bajar, el encabezado se vuelve transparente (vidrio esmerilado); arriba de todo queda sólido.
+  const headerState = () => $('header.top').classList.toggle('scrolled', window.scrollY > 40);
+  window.addEventListener('scroll', headerState, { passive: true }); headerState();
 }
 
 function renderStatic() {
