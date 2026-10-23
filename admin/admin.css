@@ -40,12 +40,15 @@ code { background: var(--arena); padding: 1px 5px; border-radius: 4px; font-size
 
 .app { display: grid; grid-template-columns: 220px 1fr; min-height: 100%; }
 .side { position: sticky; top: 0; height: 100vh; border-right: 1px solid var(--line); padding: 24px 14px; display: flex; flex-direction: column; gap: 22px; background: var(--panel); }
-.side nav { display: grid; gap: 2px; }
+.side nav { display: grid; gap: 2px; align-content: start; flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; margin-right: -8px; padding-right: 6px; scrollbar-width: thin; scrollbar-color: var(--line-2) transparent; }
+.side nav::-webkit-scrollbar { width: 6px; }
+.side nav::-webkit-scrollbar-thumb { background: var(--line-2); border-radius: 3px; }
+.side nav::-webkit-scrollbar-track { background: transparent; }
 .side nav button { text-align: left; padding: 8px 12px; border-radius: 6px; display: flex; justify-content: space-between; align-items: center; }
 .side nav button:hover { background: var(--bg); }
 .side nav button[aria-current="page"] { background: var(--ink); color: var(--panel); }
 .side nav .count { font-size: 11px; background: var(--dorado); color: #fff; border-radius: 10px; padding: 0 7px; }
-.side-foot { margin-top: auto; display: grid; gap: 8px; font-size: 13px; color: var(--muted); }
+.side-foot { flex: none; margin-top: auto; display: grid; gap: 8px; font-size: 13px; color: var(--muted); }
 .whoami { display: grid; gap: 2px; padding: 10px 12px; border-radius: 8px; background: var(--bg); color: var(--ink); margin-bottom: 6px; }
 .whoami span { font-size: 11px; color: var(--muted); letter-spacing: .04em; }
 .side-foot a, .side-foot button { text-align: left; text-decoration: none; }
@@ -172,7 +175,7 @@ td.r, th.r { text-align: right; }
   .app { grid-template-columns: 1fr; }
   .side { position: sticky; z-index: 5; height: auto; flex-direction: row; align-items: center; padding: 10px max(16px, env(safe-area-inset-left, 0px)); gap: 12px; overflow-x: auto; border-right: 0; border-bottom: 1px solid var(--line); }
   .side .brand .s { display: none; }
-  .side nav { display: flex; }
+  .side nav { display: flex; overflow: visible; flex: none; margin-right: 0; padding-right: 0; }
   .side nav button { white-space: nowrap; }
   .side-foot { display: none; }
   .main { padding: 20px max(16px, env(safe-area-inset-right, 0px)) 60px max(16px, env(safe-area-inset-left, 0px)); }
