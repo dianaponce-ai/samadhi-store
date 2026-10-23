@@ -649,10 +649,11 @@ async function viewEmails() {
   $('#view').innerHTML = `
     <div class="page-head"><div><h1>Emails automáticos</h1><div class="sub">${d.templates.filter((t) => t.enabled).length} de ${d.templates.length} activados · se mandan solos según lo que pasa en la tienda</div></div>
       <div class="actions"><button class="btn" id="runJobs">Revisar recordatorios ahora</button></div></div>
-    ${d.smtp ? '' : '<div class="notice" style="margin-bottom:14px">Todavía falta configurar el envío (SMTP_URL en el archivo .env). Mientras tanto los emails se generan y quedan en el historial, pero no salen.</div>'}
+    ${d.smtp ? '' : `<div class="notice" style="margin-bottom:14px">${d.demo ? 'Vista previa en Vercel: los emails automáticos quedan en el historial. Las pruebas y “Lo que te probaste” salen de verdad solo a los emails autorizados en DEMO_EMAIL_TO, si está cargada la clave de Resend.' : 'Todavía falta configurar el envío (RESEND_API_KEY o SMTP_URL en el archivo .env). Mientras tanto los emails se generan y quedan en el historial, pero no salen.'}</div>`}
     <div class="grid g3">
       <div class="grid" style="align-content:start">${groups}</div>
       <div class="grid" style="align-content:start">
+        <div class="card form"><h2>Pruebas</h2><label class="fl"><span>Mandar las pruebas a</span><input id="testTo" type="email" value="${esc(localStorage.getItem('samadhi-test-to') || ME.email || '')}"><span class="help">Tocá “Probar” en cualquier email y llega con datos de ejemplo a esta dirección.</span></label></div>
         <div class="card" id="pvCard"><h2>Vista previa</h2><div id="pvBox"><p class="muted">Tocá “Ver” en cualquier email para verlo como le llega a la clienta.</p></div></div>
         <form class="card form" id="mailSet" novalidate><h2>Tiempos de los recordatorios</h2>
           <div class="row"><label class="fl"><span>Carrito: primer aviso (horas después de dejar la bolsa)</span><input type="number" min="1" name="cartReminder1Hours" value="${S.cartReminder1Hours}"></label>
@@ -674,7 +675,9 @@ async function viewEmails() {
   $$('[data-pv]').forEach((b) => (b.onclick = () => pv(b.dataset.pv).catch((e) => toast(e.message, true))));
   $$('[data-test]').forEach((b) => (b.onclick = async () => {
     b.disabled = true;
-    try { const r = await api('/emails/test', { method: 'POST', body: { key: b.dataset.test } }); toast(r.status === 'enviado' ? `Te lo mandamos a ${ME.email}` : `Generado: ${r.status}`); viewEmails(); }
+    const to = $('#testTo').value.trim();
+    try { localStorage.setItem('samadhi-test-to', to); } catch {}
+    try { const r = await api('/emails/test', { method: 'POST', body: { key: b.dataset.test, to } }); toast(r.status === 'enviado' ? `Te lo mandamos a ${to}` : `Generado: ${r.status}`); setTimeout(viewEmails, r.pending ? 2500 : 0); }
     catch (e) { toast(e.message, true); b.disabled = false; }
   }));
   $$('[data-en]').forEach((c) => (c.onchange = async () => {
@@ -903,7 +906,7 @@ async function tryonMailer(customerId, onSent) {
     try {
       const r = await api('/tryon/followup', { method: 'POST', body: payload() });
       m.remove();
-      toast(String(r.status).startsWith('enviado') ? `Email enviado${r.coupon ? ` con el código ${r.coupon.code}` : ''}` : `Quedó registrado (${r.status})${r.coupon ? ` · código ${r.coupon.code}` : ''}`);
+      toast(r.status === 'enviando…' ? `Enviando el email${r.coupon ? ` con el código ${r.coupon.code}` : ''}… el estado queda en Emails` : String(r.status).startsWith('enviado') ? `Email enviado${r.coupon ? ` con el código ${r.coupon.code}` : ''}` : `Quedó registrado (${r.status})${r.coupon ? ` · código ${r.coupon.code}` : ''}`);
       onSent?.();
     } catch (err) { m.querySelector('#tmErr').textContent = err.message; btn.disabled = false; btn.textContent = 'Enviar email'; }
   };

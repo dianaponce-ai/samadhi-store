@@ -27,6 +27,9 @@
   "functions": {
     "api/probador.js": {
       "maxDuration": 60
+    },
+    "api/email.js": {
+      "maxDuration": 30
     }
   }
 }

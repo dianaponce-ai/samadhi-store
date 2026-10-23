@@ -441,7 +441,7 @@ admin.get('/emails', onlyAdmin, (req, res) => {
   const s = emailSettings();
   res.json({
     templates: Object.entries(TEMPLATES).map(([key, t]) => ({ key, label: t.label, group: t.group, to: t.to, when: t.when, marketing: !!t.marketing, enabled: !!s.enabled[key] })),
-    groups: GROUPS, settings: { ...s, enabled: undefined }, smtp: !!config.mail.smtpUrl, staffFallback: config.mail.storeNotify || '', log: recentLog(60),
+    groups: GROUPS, settings: { ...s, enabled: undefined }, smtp: !!(config.mail.smtpUrl || config.mail.resendKey), staffFallback: config.mail.storeNotify || '', log: recentLog(60),
   });
 });
 admin.put('/emails', onlyAdmin, (req, res) => {

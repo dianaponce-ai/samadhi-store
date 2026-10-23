@@ -2,6 +2,7 @@
 // Cada envío queda en email_log (también cuando falta SMTP, para poder revisarlo desde el panel).
 import crypto from 'node:crypto';
 import { config } from './config.js';
+import { resendSend } from '../integrations/resend.js';
 import { db, all, get, run, getSetting } from './db.js';
 import { TEMPLATES, render } from './email-templates.js';
 
@@ -67,7 +68,10 @@ export async function sendTemplate(key, to, ctx, { orderId = null, force = false
   const { subject, html } = render(key, c);
   let status = 'enviado';
   const t = await getTransport();
-  if (!t) status = 'sin enviar (falta SMTP)';
+  if (config.mail.resendKey) {
+    try { await resendSend({ apiKey: config.mail.resendKey, from: config.mail.from, to, subject, html }); }
+    catch (err) { status = 'error: ' + err.message.slice(0, 120); console.error('[mail]', err.detail || err.message); }
+  } else if (!t) status = 'sin enviar (falta SMTP o RESEND_API_KEY)';
   else {
     try { await t.sendMail({ from: config.mail.from, to, subject, html }); }
     catch (err) { status = 'error: ' + err.message.slice(0, 120); console.error('[mail]', err.message); }

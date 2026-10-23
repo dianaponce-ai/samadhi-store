@@ -53,6 +53,7 @@ export const config = {
   },
   mail: {
     smtpUrl: env('SMTP_URL'),
+    resendKey: env('RESEND_API_KEY'),
     from: env('MAIL_FROM', 'Samadhi Style <hola@samadhistyle.com.ar>'),
     storeNotify: env('STORE_NOTIFY_EMAIL'),
   },
