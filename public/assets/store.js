@@ -1338,7 +1338,7 @@ function renderTryon() {
   }
   $('#tryon').innerHTML = `<div class="tr-head"><div><div class="caps">Probador virtual</div><h3>Probátelo</h3></div>
       <button class="close" data-tclose aria-label="Cerrar"><svg viewBox="0 0 16 16"><path d="M2 2l12 12M14 2L2 14"/></svg></button></div>
-    <div class="tr-body"><div class="tr-stage">${stage}</div><div class="tr-side">${tr.error ? `<div class="alert" role="alert">${esc(tr.error)}${tr.errorDetail ? `<small class="tr-detail">Detalle técnico: ${esc(tr.errorDetail)}</small>` : ''}</div>` : ''}${side}</div></div>
+    <div class="tr-body"><div class="tr-stage">${stage}</div><div class="tr-side">${tr.error ? `<div class="alert" role="alert">${esc(tr.error)}</div>` : ''}${side}</div></div>
     <input type="file" id="trFile" accept="image/*" hidden>`;
 }
 const norm = (x) => String(x || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
@@ -1346,7 +1346,7 @@ const norm = (x) => String(x || '').normalize('NFD').replace(/[\u0300-\u036f]/g,
 const toJpeg = (src) => new Promise((ok) => { const i = new Image(); i.onload = () => { const c = document.createElement('canvas'); const k = Math.min(1, 1296 / i.naturalHeight); c.width = Math.round(i.naturalWidth * k); c.height = Math.round(i.naturalHeight * k); c.getContext('2d').drawImage(i, 0, 0, c.width, c.height); ok(c.toDataURL('image/jpeg', 0.9)); }; i.onerror = () => ok(src); i.src = src; });
 async function runTryon() {
   if (own()) return addToLook(tr.p);
-  tr.status = 'working'; tr.error = ''; tr.errorDetail = ''; renderTryon();
+  tr.status = 'working'; tr.error = ''; renderTryon();
   try {
     const size = await new Promise((ok) => { const i = new Image(); i.onload = () => ok([i.naturalWidth, i.naturalHeight]); i.onerror = () => ok(null); i.src = tr.base; });
     const st = await api('/api/tryon', { productId: tr.p.id, image: tr.img, photo: tr.base, photoSize: size, garmentUrl: tr.p.images[tr.img], kind: CAT.tryon.garments?.[tr.p.id]?.kind || null, name: tr.p.name });
@@ -1364,7 +1364,7 @@ async function runTryon() {
       return analyzePhoto();
     }
     tr.error = e.message;
-    tr.errorDetail = e.data?.detail || '';
+    if (e.data?.detail) console.warn('Probador:', e.data.detail); // queda en la consola del navegador, no se le muestra a la clienta
   }
   tr.status = 'ready'; renderTryon();
 }
