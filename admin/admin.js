@@ -252,15 +252,17 @@ async function viewProducts() {
       <button class="btn sm" data-bulk="feature">Destacar</button><button class="btn sm" data-bulk="unfeature">Quitar destacado</button>
       <input id="bpct" type="number" min="1" max="90" placeholder="% off" style="width:90px;min-width:0"><button class="btn sm" data-bulk="discount">Aplicar descuento</button>
       <button class="btn sm" data-bulk="clear-discount">Quitar descuento</button>
+      ${isAdmin() ? '<button class="btn sm danger" id="bulkDel">Eliminar</button>' : ''}
     </div>
-    <div class="tablewrap"><table><thead><tr><th><input type="checkbox" id="selAll" aria-label="Elegir todos"></th><th></th><th>Producto</th><th>Colección</th><th class="r">Precio</th><th class="r">Stock</th><th>Estado</th></tr></thead><tbody>
+    <div class="tablewrap"><table><thead><tr><th><input type="checkbox" id="selAll" aria-label="Elegir todos"></th><th></th><th>Producto</th><th>Colección</th><th class="r">Precio</th><th class="r">Stock</th><th>Estado</th>${isAdmin() ? '<th></th>' : ''}</tr></thead><tbody>
     ${d.rows.map((p) => `<tr class="click" data-href="#producto/${p.id}"><td><input type="checkbox" data-sel="${p.id}" ${prodState.sel.has(p.id) ? 'checked' : ''} aria-label="Elegir ${esc(p.name)}"></td>
       <td style="width:52px">${p.image ? `<img class="thumb" src="${esc(thumb(p.image))}" alt="" loading="lazy">` : '<div class="thumb"></div>'}</td>
       <td><b>${esc(p.name)}</b><div class="small muted">${esc(p.ref_code || p.slug)} · ${p.variants} variantes</div></td>
       <td class="small">${esc(p.collection)}</td>
       <td class="r n">${fmt(p.price)}${p.list_price > p.price ? `<div class="small muted"><s>${fmt(p.list_price)}</s></div>` : ''}</td>
       <td class="r n">${stockCell(p)}</td>
-      <td>${p.visible ? '<span class="pill s-delivered">Publicado</span>' : '<span class="pill s-cancelled">Oculto</span>'}${p.featured ? ' <span class="pill s-preparing">Destacado</span>' : ''}</td></tr>`).join('')}
+      <td>${p.visible ? '<span class="pill s-delivered">Publicado</span>' : '<span class="pill s-cancelled">Oculto</span>'}${p.featured ? ' <span class="pill s-preparing">Destacado</span>' : ''}</td>
+      ${isAdmin() ? `<td class="r"><button class="btn sm danger" data-pdel="${p.id}" aria-label="Eliminar ${esc(p.name)}">Eliminar</button></td>` : ''}</tr>`).join('')}
     </tbody></table></div>`;
   let t;
   $('#pq').oninput = (e) => { clearTimeout(t); t = setTimeout(() => { prodState.q = e.target.value; viewProducts().then(() => { const i = $('#pq'); i.focus(); i.setSelectionRange(i.value.length, i.value.length); }); }, 300); };
@@ -276,6 +278,18 @@ async function viewProducts() {
     try { const r = await api('/products/bulk', { method: 'POST', body: { ids: [...prodState.sel], action, percent } }); toast(`${r.count} productos actualizados`); prodState.sel.clear(); viewProducts(); }
     catch (e) { toast(e.message, true); }
   }));
+  // Eliminar: de a uno desde la fila o varios desde la selección (solo administración)
+  $$('[data-pdel]').forEach((b) => (b.onclick = () => confirmInline(b, 'Se borra con sus variantes y fotos. Los pedidos viejos no cambian.', async () => {
+    try { await api('/products/' + b.dataset.pdel, { method: 'DELETE' }); prodState.sel.delete(Number(b.dataset.pdel)); toast('Producto eliminado'); viewProducts(); }
+    catch (e) { toast(e.message, true); }
+  }, 'Eliminar')));
+  $('#bulkDel')?.addEventListener('click', (e) => {
+    const n = prodState.sel.size;
+    confirmInline(e.target, `Se borran ${n} producto${n === 1 ? '' : 's'} con sus variantes y fotos. Los pedidos viejos no cambian. Para sacarlos de la tienda sin borrarlos usá "Ocultar".`, async () => {
+      try { const r = await api('/products/bulk', { method: 'POST', body: { ids: [...prodState.sel], action: 'delete' } }); toast(`${r.count} producto${r.count === 1 ? '' : 's'} eliminado${r.count === 1 ? '' : 's'}`); prodState.sel.clear(); viewProducts(); }
+      catch (err) { toast(err.message, true); }
+    }, `Eliminar ${n}`);
+  });
 }
 
 async function viewProduct(id) {

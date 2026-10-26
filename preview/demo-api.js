@@ -786,6 +786,7 @@ function adminRoute(method, path, q, b, raw) {
   if (path === '/products/bulk') {
     const ids = (b.ids || []).map(Number);
     if (!ids.length) fail(400, 'Elegí al menos un producto.');
+    if (b.action === 'delete') { onlyAdmin(); S.products = S.products.filter((x) => !ids.includes(x.id)); return { ok: true, count: ids.length }; }
     for (const p of S.products.filter((x) => ids.includes(x.id))) {
       if (b.action === 'show') p.visible = 1; else if (b.action === 'hide') p.visible = 0;
       else if (b.action === 'feature') p.featured = 1; else if (b.action === 'unfeature') p.featured = 0;

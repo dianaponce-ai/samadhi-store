@@ -145,6 +145,21 @@ test('roles: el gerente no entra a configuración ni a usuarios', async () => {
   assert.ok(u.data.users.some((x) => x.role === 'manager'));
 });
 
+test('eliminar productos: de a uno y en bloque, solo administración', async () => {
+  const login = async (email, password) => fetch(B + '/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password }) });
+  const hdr = (r) => ({ cookie: r.headers.get('set-cookie').split(';')[0], 'x-samadhi-admin': '1' });
+  const HG = hdr(await login('gerente@samadhistyle.com.ar', 'SamadhiGerente2026'));
+  const HA = hdr(await login('admin@samadhistyle.com.ar', 'SamadhiAdmin2026'));
+  const ids = (await json('/api/admin/products', { headers: HA })).data.rows.slice(-3).map((p) => p.id);
+  assert.equal((await json('/api/admin/products/bulk', { method: 'POST', headers: HG, body: { ids, action: 'delete' } })).status, 403);
+  assert.equal((await json('/api/admin/products/' + ids[0], { method: 'DELETE', headers: HG })).status, 403);
+  assert.equal((await json('/api/admin/products/' + ids[0], { method: 'DELETE', headers: HA })).status, 200);
+  const r = await json('/api/admin/products/bulk', { method: 'POST', headers: HA, body: { ids: ids.slice(1), action: 'delete' } });
+  assert.equal(r.status, 200);
+  const left = (await json('/api/admin/products', { headers: HA })).data.rows.map((p) => p.id);
+  assert.ok(ids.every((id) => !left.includes(id)));
+});
+
 test('cuentas de cliente: registro, ingreso y mis pedidos', async () => {
   const reg = await json('/api/auth/register', { method: 'POST', body: { name: 'Sofía Cuenta', email: 'sofia@prueba.com', password: 'una-clave-larga' } });
   assert.equal(reg.status, 200);

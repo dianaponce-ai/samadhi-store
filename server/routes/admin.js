@@ -225,9 +225,11 @@ admin.post('/products/bulk', (req, res) => {
   const ids = (req.body?.ids || []).map((x) => int(x)).filter(Boolean);
   const action = req.body?.action;
   if (!ids.length) throw new HttpError(400, 'Elegí al menos un producto.');
+  if (action === 'delete' && req.admin?.role !== 'admin') throw new HttpError(403, 'Solo administración puede eliminar productos.');
   const ph = ids.map(() => '?').join(',');
   tx(() => {
-    if (action === 'show') run(`UPDATE products SET visible = 1 WHERE id IN (${ph})`, ...ids);
+    if (action === 'delete') run(`DELETE FROM products WHERE id IN (${ph})`, ...ids);
+    else if (action === 'show') run(`UPDATE products SET visible = 1 WHERE id IN (${ph})`, ...ids);
     else if (action === 'hide') run(`UPDATE products SET visible = 0 WHERE id IN (${ph})`, ...ids);
     else if (action === 'feature') run(`UPDATE products SET featured = 1 WHERE id IN (${ph})`, ...ids);
     else if (action === 'unfeature') run(`UPDATE products SET featured = 0 WHERE id IN (${ph})`, ...ids);
