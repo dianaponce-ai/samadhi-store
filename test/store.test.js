@@ -353,15 +353,22 @@ test('probador: motor propio con prendas preparadas y FASHN en modo prueba', asy
 });
 
 test('Gemini: arma el pedido con las dos fotos y la indicación', async () => {
-  const { buildPrompt, closestRatio, geminiTryOn } = await import('../server/integrations/gemini.js');
+  const { buildPrompt, closestRatio, geminiTryOn, resolveKind } = await import('../server/integrations/gemini.js');
   assert.equal(closestRatio(720, 1280), '9:16');
   assert.equal(closestRatio(1000, 1500), '2:3');
-  assert.match(buildPrompt({ kind: 'top', name: 'Blazer' }), /upper-body garment.*Blazer.*instead of her current top/s);
-  assert.match(buildPrompt({ kind: 'full', name: 'Vestido Juana' }), /complete outfit change.*ONLY the dress.*bare legs/s);
+  assert.match(buildPrompt({ kind: 'top', name: 'Blusa Flor' }), /top \(blouse.*Blusa Flor.*ONLY the top.*instead of her current top/s);
+  assert.match(buildPrompt({ kind: 'full', name: 'Vestido Juana' }), /complete outfit change.*ONLY this dress.*bare legs/s);
+  assert.match(buildPrompt({ kind: 'outer', name: 'Blazer July' }), /outer layer.*over her current clothes/s);
+  // Tipo de prenda: sin recorte se adivina por nombre y categorías; conjuntos y abrigos ganan sobre el recorte.
+  assert.equal(resolveKind(null, 'Jean Faro', ['Denim', 'Jean']), 'bottom');
+  assert.equal(resolveKind(null, 'Vestido Carola', ['Vestidos']), 'full');
+  assert.equal(resolveKind('top', 'Chaleco Kampala', ['Chalecos']), 'outer');
+  assert.equal(resolveKind('top', 'Set Malaga', ['Conjuntos']), 'set');
+  assert.equal(resolveKind('bottom', 'Oxford Diva', []), 'bottom');
   await assert.rejects(geminiTryOn({ apiKey: '', person: 'data:image/jpeg;base64,AA==', garment: { mimeType: 'image/png', data: 'AA==' }, kind: 'top' }), (e) => e.code === 'sin-clave');
   // Respuesta simulada del servicio: devuelve la imagen generada.
   const real = globalThis.fetch;
-  globalThis.fetch = async (url, opts) => { const body = JSON.parse(opts.body); assert.equal(body.contents[0].parts.length, 3); assert.ok(String(url).includes(':generateContent'));
+  globalThis.fetch = async (url, opts) => { const body = JSON.parse(opts.body); assert.equal(body.contents[0].parts.filter((x) => x.inlineData).length, 2); assert.ok(String(url).includes(':generateContent'));
     return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ inlineData: { mimeType: 'image/png', data: 'iVBOR' } }] } }] }), { status: 200 }); };
   try { const r = await geminiTryOn({ apiKey: 'k', person: 'data:image/jpeg;base64,AA==', personSize: [600, 900], garment: { mimeType: 'image/png', data: 'AA==' }, kind: 'full' }); assert.equal(r.image, 'data:image/png;base64,iVBOR'); }
   finally { globalThis.fetch = real; }

@@ -7,7 +7,7 @@ import { config } from '../lib/config.js';
 import { db, all, get, run, getSetting } from '../lib/db.js';
 import { HttpError } from '../lib/util.js';
 import { publicGarments } from '../lib/probador.js';
-import { geminiTryOn } from './gemini.js';
+import { geminiTryOn, resolveKind } from './gemini.js';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { ROOT } from '../lib/config.js';
@@ -92,8 +92,8 @@ export async function startTryon({ productId, image = 0, photo, photoSize }, ip,
   }
   if (s.engine === 'gemini') {
     const g = get('SELECT kind FROM tryon_garments WHERE product_id = ?', p.id);
-    const cats = all('SELECT c.name FROM product_categories pc JOIN categories c ON c.id = pc.category_id WHERE pc.product_id = ?', p.id).map((c) => c.name).join(' ');
-    const kind = g?.kind || (/vestid|mono|enterit|tunica/i.test(p.name + ' ' + cats) ? 'full' : /jean|pantal|short|falda|pollera|wide/i.test(p.name + ' ' + cats) ? 'bottom' : 'top');
+    const cats = all('SELECT c.name FROM product_categories pc JOIN categories c ON c.id = pc.category_id WHERE pc.product_id = ?', p.id).map((c) => c.name);
+    const kind = resolveKind(g?.kind, p.name, cats);
     const job = { gemini: true, logId, started: Date.now(), productId: p.id, done: null, error: null };
     jobs.set(id, job);
     (async () => {

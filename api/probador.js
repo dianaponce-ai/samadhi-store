@@ -1,7 +1,8 @@
 // Función de Vercel para la demo: probador con IA de Google Gemini.
 // La demo de Vercel es estática (la tienda y el panel corren en el navegador); esta es la única parte que corre en el servidor.
-// Necesita la variable GEMINI_API_KEY en Vercel (Settings → Environment Variables). Opcional: GEMINI_IMAGE_MODEL.
-import { geminiTryOn, GEMINI_DEFAULT_MODEL } from '../server/integrations/gemini.js';
+// Necesita la variable GEMINI_API_KEY en Vercel (Settings → Environment Variables). Opcional: GEMINI_IMAGE_MODEL
+// (si no está, usa gemini-3.1-flash-image y, si la clave no lo tiene, el siguiente de la lista).
+import { geminiTryOn, resolveKind } from '../server/integrations/gemini.js';
 
 const hits = new Map(); // límite simple por persona (por instancia): 15 pruebas por hora
 const ALLOWED = /^https:\/\/acdn(-us)?\.mitiendanube\.com\//;
@@ -18,19 +19,24 @@ export default async function handler(req, res) {
   if (list.length >= 15) return res.status(429).json({ error: 'Probaste muchas prendas seguidas. Esperá un rato y seguí.' });
   list.push(now); hits.set(ip, list);
 
-  const { photo, photoSize, garmentUrl, kind, name } = req.body || {};
+  const { photo, photoSize, garmentUrl, kind, name, categories } = req.body || {};
   if (!/^data:image\/(jpeg|png|webp);base64,/.test(String(photo || '')) || photo.length > 4_000_000) return res.status(422).json({ error: 'Subí una foto tuya de cuerpo entero (JPG o PNG).' });
   let url = String(garmentUrl || '');
   if (!ALLOWED.test(url)) {
     if (!/^\/?(media|probador|img)\/[\w./-]+\.(png|webp|jpe?g)$/.test(url)) return res.status(422).json({ error: 'Foto de prenda inválida.' });
     url = `https://${host}/${url.replace(/^\//, '')}`;
   } else url = url.replace(/-\d+-\d+\.(webp|jpg|png)$/, '-1024-1024.$1');
+  const t0 = Date.now();
   try {
     const r = await fetch(url, { signal: AbortSignal.timeout(15000) });
     if (!r.ok) return res.status(502).json({ error: 'No pudimos cargar la foto de la prenda.' });
     const garment = { mimeType: r.headers.get('content-type') || 'image/webp', data: Buffer.from(await r.arrayBuffer()).toString('base64') };
-    const out = await geminiTryOn({ apiKey: process.env.GEMINI_API_KEY, model: process.env.GEMINI_IMAGE_MODEL || GEMINI_DEFAULT_MODEL, person: photo, personSize: Array.isArray(photoSize) ? photoSize : null,
-      garment, kind: ['top', 'bottom', 'full'].includes(kind) ? kind : 'top', name: String(name || '').slice(0, 80), flat: /\.png$/i.test(url), timeoutMs: 55000 });
+    const cats = Array.isArray(categories) ? categories.map((c) => String(c).slice(0, 40)).slice(0, 10) : [];
+    const finalKind = resolveKind(kind, name, cats);
+    const out = await geminiTryOn({ apiKey: process.env.GEMINI_API_KEY, model: process.env.GEMINI_IMAGE_MODEL || undefined, person: photo, personSize: Array.isArray(photoSize) ? photoSize : null,
+      garment, kind: finalKind, name: String(name || '').slice(0, 80), flat: /\.png$/i.test(url), timeoutMs: 100000 });
+    console.log('[probador]', out.model, finalKind, String(name || '').slice(0, 40), `${Date.now() - t0}ms`);
+    out.kind = finalKind;
     return res.status(200).json(out);
   } catch (e) {
     console.error('[probador]', e.code, e.detail || e.message);

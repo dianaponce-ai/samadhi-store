@@ -1368,7 +1368,7 @@ async function runTryon() {
     const size = await new Promise((ok) => { const i = new Image(); i.onload = () => ok([i.naturalWidth, i.naturalHeight]); i.onerror = () => ok(null); i.src = tr.base; });
     const st = await api('/api/tryon', { productId: tr.p.id, image: tr.img, photo: tr.base, photoSize: size, garmentUrl: tr.p.images[tr.img], kind: CAT.tryon.garments?.[tr.p.id]?.kind || null, name: tr.p.name });
     for (let i = 0; i < 80; i++) {
-      await new Promise((ok) => setTimeout(ok, i < 3 ? 2500 : 1500));
+      await new Promise((ok) => setTimeout(ok, i === 0 ? 400 : 1500));
       const r = await api('/api/tryon/' + encodeURIComponent(st.id));
       if (r.status === 'completed') { tr.log = r.log; tr.mock = !!r.mock; tr.result = r.image ? await toJpeg(r.image) : null; tr.cmp = 0; tr.look.push(tr.p); break; }
     }
