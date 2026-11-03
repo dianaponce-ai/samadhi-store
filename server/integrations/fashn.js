@@ -30,7 +30,7 @@ if (!all('PRAGMA table_info(tryon_log)').some((c) => c.name === 'customer_id')) 
 
 const API = 'https://api.fashn.ai/v1';
 // engine: 'samadhi' (motor propio, en el navegador), 'gemini' (IA de Google) o 'fashn' (IA de FASHN). Los dos últimos se pagan por imagen.
-export const TRYON_DEFAULTS = { enabled: true, engine: 'gemini', dailyLimit: 300, perHour: 12, mode: 'balanced', hiddenCategories: null, requireLogin: true };
+export const TRYON_DEFAULTS = { enabled: true, engine: 'gemini', dailyLimit: 1000, perHour: 100, mode: 'balanced', hiddenCategories: null, requireLogin: true };
 /** Si el probador pide cuenta y no hay sesión, corta con un código que la tienda entiende. */
 function needLogin(customer, staff) { if (tryonSettings().requireLogin && !customer && !staff) throw new HttpError(401, 'Para usar el probador virtual ingresá a tu cuenta (o creala, es gratis).', { code: 'login' }); }
 const ACCESSORY = /acces|bolso|cartera|cintur|bijou|aros|collar|pa[ñn]uelo|sombrero|gorro|lentes|calzado|zapat|bota|sandal|media/i;

@@ -1024,7 +1024,7 @@ async function viewTryon() {
         <label class="radio-card"><input type="radio" name="engine" value="samadhi" ${own ? 'checked' : ''}><span><b>Samadhi (propio)</b><small>Gratis e ilimitado. Calza las prendas preparadas sobre la foto o en vivo con la cámara. Es una simulación 2D: sirve para ver combinaciones y largos.</small></span></label>
         <label class="radio-card"><input type="radio" name="engine" value="fashn" ${S.engine === 'fashn' ? 'checked' : ''}><span><b>FASHN (IA generativa)</b><small>Imagen fotorrealista, unos 8 segundos y 1 crédito por prueba. ${S.engine === 'fashn' ? (d.mock ? 'Falta FASHN_API_KEY en el archivo .env.' : 'Conectado.') : ''}</small></span></label></div>
       <div class="row" style="margin-top:12px"><label class="fl"><span>FASHN · límite por día</span><input type="number" min="1" name="dailyLimit" value="${S.dailyLimit}"></label>
-        <label class="fl"><span>FASHN · por persona, por hora</span><input type="number" min="1" name="perHour" value="${S.perHour}"></label>
+        <label class="fl"><span>IA · pruebas por persona, por hora</span><input type="number" min="1" name="perHour" value="${S.perHour}"></label>
         <label class="fl"><span>FASHN · calidad</span><select name="mode">${[['performance', 'Rápida'], ['balanced', 'Equilibrada'], ['quality', 'Máxima']].map(([k, l]) => `<option value="${k}" ${S.mode === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label></div>
       <button class="btn primary" type="submit" style="margin-top:12px">Guardar</button></form>`;
     $('#trSet').onsubmit = async (e) => {

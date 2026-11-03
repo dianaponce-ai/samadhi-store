@@ -4,7 +4,8 @@
 // (si no está, usa gemini-3.1-flash-image y, si la clave no lo tiene, el siguiente de la lista).
 import { geminiTryOn, resolveKind } from '../server/integrations/gemini.js';
 
-const hits = new Map(); // límite simple por persona (por instancia): 15 pruebas por hora
+const hits = new Map(); // límite simple por persona (por instancia). PROBADOR_POR_HORA en Vercel lo cambia (0 = sin límite).
+const PER_HOUR = Number(process.env.PROBADOR_POR_HORA ?? 100);
 const ALLOWED = /^https:\/\/acdn(-us)?\.mitiendanube\.com\//;
 
 /** URL pública y segura de una foto de la prenda (CDN de Tiendanube o archivos de la demo), o null. */
@@ -29,7 +30,7 @@ export default async function handler(req, res) {
   if (!process.env.GEMINI_API_KEY) return res.status(503).json({ error: 'El probador con IA no está configurado.', code: 'sin-clave' });
   const ip = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim() || 'x';
   const now = Date.now(), list = (hits.get(ip) || []).filter((t) => now - t < 3600e3);
-  if (list.length >= 15) return res.status(429).json({ error: 'Probaste muchas prendas seguidas. Esperá un rato y seguí.' });
+  if (PER_HOUR > 0 && list.length >= PER_HOUR) return res.status(429).json({ error: 'Probaste muchas prendas seguidas. Esperá un rato y seguí.' });
   list.push(now); hits.set(ip, list);
 
   const { photo, photoSize, garmentUrl, garmentUrls, kind, name, categories } = req.body || {};

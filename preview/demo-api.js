@@ -43,7 +43,7 @@ function seedStateInner() {
         origin: { calle: '', numero: '', codigoPostal: '', localidad: '', region: 'AR-B', pais: 'Argentina' }, sender: { nombreCompleto: 'Samadhi Style', email: '', documentoTipo: 'CUIT', documentoNumero: '', telefono: '' } },
       payments: { installments: 3, transferEnabled: true, transferDiscount: 10, bankHolder: 'Samadhi Style (ejemplo)', bankName: 'Banco de ejemplo', bankCbu: '0000003100000000000001', bankAlias: 'SAMADHI.STYLE.EJEMPLO', transferHours: 48 },
       checkout: { requireDni: true, orderPrefix: 'S', nextOrderNumber: 1001 },
-      tryon: { enabled: true, engine: 'gemini', dailyLimit: 300, perHour: 12, mode: 'balanced', hiddenCategories: null, requireLogin: true },
+      tryon: { enabled: true, engine: 'gemini', dailyLimit: 1000, perHour: 100, mode: 'balanced', hiddenCategories: null, requireLogin: true },
       content: { ...window.__CONTENT.CONTENT_DEFAULTS, faq: window.__CONTENT.CONTENT_DEFAULTS.faq.map((x) => ({ ...x })) },
       emails: { enabled: Object.fromEntries(Object.keys(window.__EMAIL.TEMPLATES).map((k) => [k, true])), paymentReminderHours: 24, transferReminderHoursBefore: 12, pickupReminderDays: 3, cartReminder1Hours: 1, cartReminder2Hours: 48, staffEmails: 'admin@samadhistyle.com.ar' },
     },

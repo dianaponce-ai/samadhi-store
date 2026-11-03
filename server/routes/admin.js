@@ -556,7 +556,7 @@ admin.put('/tryon', onlyAdmin, (req, res) => {
   setSetting('tryon', {
     enabled: b.enabled === undefined ? cur.enabled : !!b.enabled,
     dailyLimit: b.dailyLimit === undefined ? cur.dailyLimit : Math.min(5000, Math.max(1, int(b.dailyLimit, cur.dailyLimit))),
-    perHour: b.perHour === undefined ? cur.perHour : Math.min(100, Math.max(1, int(b.perHour, cur.perHour))),
+    perHour: b.perHour === undefined ? cur.perHour : Math.min(1000, Math.max(1, int(b.perHour, cur.perHour))),
     mode: ['performance', 'balanced', 'quality'].includes(b.mode) ? b.mode : cur.mode,
     engine: ['samadhi', 'fashn', 'gemini'].includes(b.engine) ? b.engine : cur.engine,
     hiddenCategories: Array.isArray(b.hiddenCategories) ? b.hiddenCategories.map(Number) : cur.hiddenCategories,
