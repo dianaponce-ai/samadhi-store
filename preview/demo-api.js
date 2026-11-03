@@ -1012,7 +1012,7 @@ window.__SAMADHI_API = async (url, { method = 'GET', body } = {}) => {
     if (S.settings.tryon.requireLogin !== false && !customerMe() && !S.session.staff) { const err = new Error('Para usar el probador virtual ingresá a tu cuenta (o creala, es gratis).'); err.data = { code: 'login' }; err.status = 401; throw err; }
     if (!p) { const err = new Error('No encontramos esa prenda.'); err.status = 404; throw err; }
     let r, d = {};
-    try { r = await fetch('/api/probador', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ photo: b.photo, photoSize: b.photoSize, garmentUrl: b.garmentUrl, kind: b.kind || S.garments[p.id]?.kind, name: p.name, categories: (p.categories || []).map((id) => S.categories.find((c) => c.id === id)?.name).filter(Boolean) }) }); d = await r.json().catch(() => ({})); }
+    try { r = await fetch('/api/probador', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ photo: b.photo, photoSize: b.photoSize, garmentUrl: b.garmentUrl, garmentUrls: b.garmentUrls, kind: b.kind || S.garments[p.id]?.kind, name: p.name, categories: (p.categories || []).map((id) => S.categories.find((c) => c.id === id)?.name).filter(Boolean) }) }); d = await r.json().catch(() => ({})); }
     catch { r = null; }
     if (!r || r.status === 404 || r.status === 405 || d.code === 'sin-clave') { const err = new Error('El probador con IA no está disponible acá.'); err.data = { code: 'sin-ia' }; err.status = 503; throw err; }
     if (!r.ok || !d.image) { const err = new Error(d.error || 'No pudimos generar la imagen.'); err.data = { code: d.code, detail: d.detail || `${r.status}` }; err.status = r.status; throw err; }

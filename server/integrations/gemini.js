@@ -21,18 +21,18 @@ const KIND_EN = {
 // Qué se saca y qué se deja de la ropa de la clienta, según el tipo de prenda.
 // Los modelos de imagen siguen mejor una descripción de cómo tiene que quedar la foto final que una lista de prohibiciones.
 const SWAP = {
-  top: 'Change only the upper body: the customer now wears this top instead of her current top, tucked or untucked as it is worn in image 2. Her current trousers, skirt or shorts and her shoes stay exactly as they are.',
-  bottom: 'Change only the lower body: the customer now wears this bottom instead of her current trousers, skirt or shorts, with the same length, rise and leg shape as in image 2. Her current top and her shoes stay exactly as they are.',
-  full: 'This is a complete outfit change. In the final photo the customer wears ONLY this dress or jumpsuit plus her own shoes. It covers her from its neckline down to its own hemline, at the same height on her body as on the model in image 2 (for example, if it ends mid-thigh on the model, it ends mid-thigh on her). If it is a dress, her bare legs are visible from the hemline down to her shoes. Her original top and her original trousers or skirt no longer exist in the photo.',
-  set: 'This is a complete outfit change. The customer now wears BOTH pieces of the set from image 2: its top replaces her current top and its bottom replaces her current trousers, skirt or shorts. Only her shoes stay as they are.',
-  outer: 'Add this outer layer on top of what she is wearing: she now wears it over her current clothes, open or closed exactly as it is worn in image 2, with the same length and sleeve length. Where it is open, her current top stays visible underneath. Her trousers, skirt or shorts and her shoes stay exactly as they are.',
+  top: 'Change only the upper body: the customer now wears this top instead of her current top, tucked or untucked as it is worn in the product photos. Her current trousers, skirt or shorts and her shoes stay exactly as they are.',
+  bottom: 'Change only the lower body: the customer now wears this bottom instead of her current trousers, skirt or shorts, with the same length, rise and leg shape as in the product photos. Her current top and her shoes stay exactly as they are.',
+  full: 'This is a complete outfit change. In the final photo the customer wears ONLY this dress or jumpsuit plus her own shoes. It covers her from its neckline down to its own hemline, at the same height on her body as on the model in the product photos (for example, if it ends mid-thigh on the model, it ends mid-thigh on her). If it is a dress, her bare legs are visible from the hemline down to her shoes. Her original top and her original trousers or skirt no longer exist in the photo.',
+  set: 'This is a complete outfit change. The customer now wears BOTH pieces of the set from the product photos: its top replaces her current top and its bottom replaces her current trousers, skirt or shorts. Only her shoes stay as they are.',
+  outer: 'Add this outer layer on top of what she is wearing: she now wears it over her current clothes, open or closed exactly as it is worn in the product photos, with the same length and sleeve length. Where it is open, her current top stays visible underneath. Her trousers, skirt or shorts and her shoes stay exactly as they are.',
 };
 const FINAL_CHECK = {
   full: 'Before answering, check the result: if any part of her original trousers, shirt, collar or sleeves is still visible, redraw it so that only the dress or jumpsuit, her skin and her shoes remain.',
   set: 'Before answering, check that neither her original top nor her original trousers, skirt or shorts are visible anywhere, and that both pieces of the set are there.',
-  top: 'Before answering, check that her original top is no longer visible anywhere and that the new top looks exactly like the one in image 2.',
-  bottom: 'Before answering, check that her original trousers, skirt or shorts are no longer visible anywhere and that the new bottom looks exactly like the one in image 2.',
-  outer: 'Before answering, check that the outer layer looks exactly like the one in image 2 (color, fabric, length, collar, buttons) and that it sits over her clothes.',
+  top: 'Before answering, check that her original top is no longer visible anywhere and that the new top looks exactly like the one in the product photos.',
+  bottom: 'Before answering, check that her original trousers, skirt or shorts are no longer visible anywhere and that the new bottom looks exactly like the one in the product photos.',
+  outer: 'Before answering, check that the outer layer looks exactly like the one in the product photos (color, fabric, length, collar, buttons) and that it sits over her clothes.',
 };
 
 const norm = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
@@ -68,16 +68,18 @@ export function closestRatio(w, h) {
   return RATIOS.reduce((best, x) => (Math.abs(Math.log(x[1] / r)) < Math.abs(Math.log(best[1] / r)) ? x : best))[0];
 }
 
-export function buildPrompt({ kind, name, flat }) {
+export function buildPrompt({ kind, name, count = 1 }) {
   const k = KIND_EN[kind] || 'garment';
+  const imgs = count > 1 ? `Images 2 to ${count + 1} are photos of the same product` : 'Image 2 is a photo of the product';
   return [
-    `You are a virtual fitting room for a fashion store. Image 1 is a photo of a customer. Image 2 is the product photo of a ${k}${name ? ` called "${name}"` : ''}${flat ? ', shown on its own' : ', worn by a different model'}.`,
-    flat ? '' : `In image 2 the model may be wearing several items. The product is ONLY the ${k}; ignore every other item she wears (they are not for sale here).`,
+    `You are a virtual fitting room for a fashion store. Image 1 is a photo of a customer. ${imgs}: a ${k}${name ? ` called "${name}"` : ''}.`,
+    count > 1 ? 'Some product photos may show it worn by a model and others on its own (on a hanger, laid flat or in close-up). Use the photos on a model to judge exactly where it ends on the body (length), how long the sleeves are and how it is worn; use the other photos for color, fabric and details.' : '',
+    `If a model wears the product, she may also wear other items: the product is ONLY the ${k}; ignore every other item she wears.`,
     'Edit image 1 so that the customer is wearing exactly that product.',
     SWAP[kind] || 'Replace the corresponding clothing of the customer with this garment.',
-    'Reproduce the garment faithfully: same color, fabric, texture, print or pattern, buttons, neckline, sleeves (shape and length), silhouette and total length as in image 2, adapted naturally to the customer\'s body, with folds and shadows that match the lighting of image 1.',
+    'Reproduce the garment faithfully: same color, fabric, texture, print or pattern, buttons, neckline, sleeves (shape and length), silhouette and total length as in the product photos, adapted naturally to the customer\'s body, with folds and shadows that match the lighting of image 1. Keep the same length relative to the body (for example, mid-thigh on the model means mid-thigh on her, not below the knee).',
     'Keep the customer exactly the same: same face and identity, hair, skin tone, body shape and proportions, pose, hands, background, lighting and camera framing.',
-    'From image 2 take only the product: not the other model, her body, her other clothes, shoes, accessories or background. Do not add text or logos.',
+    'From the product photos take only the product: not the other model, her body, her other clothes, shoes, accessories, hanger or background. Do not add text or logos.',
     FINAL_CHECK[kind] || '',
     'Return only the edited photo.',
   ].filter(Boolean).join(' ');
@@ -86,15 +88,16 @@ export function buildPrompt({ kind, name, flat }) {
 const b64 = (dataUri) => { const m = /^data:(image\/[\w+.-]+);base64,(.+)$/.exec(dataUri || ''); return m ? { mimeType: m[1], data: m[2] } : null; };
 
 /**
- * person: data URI de la foto de la clienta. garment: { mimeType, data (base64) }.
+ * person: data URI de la foto de la clienta. garments: [{ mimeType, data (base64) }] (todas las fotos del producto; garment, una sola, también sirve).
  * Devuelve { image: data URI, model } o lanza un Error con .code ('sin-clave', 'bloqueada', 'sin-imagen', 'servicio').
  */
-export async function geminiTryOn({ apiKey, model, person, personSize, garment, kind, name, flat, timeoutMs = 90000 }) {
+export async function geminiTryOn({ apiKey, model, person, personSize, garment, garments, kind, name, timeoutMs = 90000 }) {
+  const prod = (Array.isArray(garments) && garments.length ? garments : [garment]).filter(Boolean).slice(0, 3);
   if (!apiKey) { const e = new Error('Falta la clave de Gemini.'); e.code = 'sin-clave'; throw e; }
   const p = b64(person);
   if (!p) { const e = new Error('Subí una foto tuya (JPG o PNG).'); e.code = 'foto'; throw e; }
   const body = {
-    contents: [{ role: 'user', parts: [{ text: 'Image 1 (customer):' }, { inlineData: p }, { text: 'Image 2 (product):' }, { inlineData: garment }, { text: buildPrompt({ kind, name, flat }) }] }],
+    contents: [{ role: 'user', parts: [{ text: 'Image 1 (customer):' }, { inlineData: p }, ...prod.flatMap((g, i) => [{ text: `Image ${i + 2} (product):` }, { inlineData: g }]), { text: buildPrompt({ kind, name, count: prod.length }) }] }],
     generationConfig: { responseModalities: ['IMAGE'], ...(personSize ? { imageConfig: { aspectRatio: closestRatio(personSize[0], personSize[1]) } } : {}) },
   };
   const deadline = Date.now() + timeoutMs;

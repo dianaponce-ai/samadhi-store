@@ -7,6 +7,19 @@ import { geminiTryOn, resolveKind } from '../server/integrations/gemini.js';
 const hits = new Map(); // límite simple por persona (por instancia): 15 pruebas por hora
 const ALLOWED = /^https:\/\/acdn(-us)?\.mitiendanube\.com\//;
 
+/** URL pública y segura de una foto de la prenda (CDN de Tiendanube o archivos de la demo), o null. */
+function garmentSrc(u, host) {
+  const url = String(u || '');
+  if (ALLOWED.test(url)) return url.replace(/-\d+-\d+\.(webp|jpg|png)$/, '-1024-1024.$1');
+  if (/^\/?(media|probador|img)\/[\w./-]+\.(png|webp|jpe?g)$/.test(url)) return `https://${host}/${url.replace(/^\//, '')}`;
+  return null;
+}
+async function fetchImage(url) {
+  const r = await fetch(url, { signal: AbortSignal.timeout(15000) });
+  if (!r.ok) throw new Error(`${r.status}`);
+  return { mimeType: r.headers.get('content-type') || 'image/webp', data: Buffer.from(await r.arrayBuffer()).toString('base64') };
+}
+
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
   if (req.method !== 'POST') return res.status(405).json({ error: 'Método no permitido.' });
@@ -19,23 +32,20 @@ export default async function handler(req, res) {
   if (list.length >= 15) return res.status(429).json({ error: 'Probaste muchas prendas seguidas. Esperá un rato y seguí.' });
   list.push(now); hits.set(ip, list);
 
-  const { photo, photoSize, garmentUrl, kind, name, categories } = req.body || {};
+  const { photo, photoSize, garmentUrl, garmentUrls, kind, name, categories } = req.body || {};
   if (!/^data:image\/(jpeg|png|webp);base64,/.test(String(photo || '')) || photo.length > 4_000_000) return res.status(422).json({ error: 'Subí una foto tuya de cuerpo entero (JPG o PNG).' });
-  let url = String(garmentUrl || '');
-  if (!ALLOWED.test(url)) {
-    if (!/^\/?(media|probador|img)\/[\w./-]+\.(png|webp|jpe?g)$/.test(url)) return res.status(422).json({ error: 'Foto de prenda inválida.' });
-    url = `https://${host}/${url.replace(/^\//, '')}`;
-  } else url = url.replace(/-\d+-\d+\.(webp|jpg|png)$/, '-1024-1024.$1');
+  // Todas las fotos del producto (hasta 3): la de la modelo da el largo y el calce; la de percha o detalle, los detalles.
+  const urls = [...new Set([].concat(Array.isArray(garmentUrls) ? garmentUrls : [], garmentUrl || []).map((u) => garmentSrc(u, host)).filter(Boolean))].slice(0, 3);
+  if (!urls.length) return res.status(422).json({ error: 'Foto de prenda inválida.' });
   const t0 = Date.now();
   try {
-    const r = await fetch(url, { signal: AbortSignal.timeout(15000) });
-    if (!r.ok) return res.status(502).json({ error: 'No pudimos cargar la foto de la prenda.' });
-    const garment = { mimeType: r.headers.get('content-type') || 'image/webp', data: Buffer.from(await r.arrayBuffer()).toString('base64') };
+    const garments = (await Promise.allSettled(urls.map(fetchImage))).filter((x) => x.status === 'fulfilled').map((x) => x.value);
+    if (!garments.length) return res.status(502).json({ error: 'No pudimos cargar la foto de la prenda.' });
     const cats = Array.isArray(categories) ? categories.map((c) => String(c).slice(0, 40)).slice(0, 10) : [];
     const finalKind = resolveKind(kind, name, cats);
     const out = await geminiTryOn({ apiKey: process.env.GEMINI_API_KEY, model: process.env.GEMINI_IMAGE_MODEL || undefined, person: photo, personSize: Array.isArray(photoSize) ? photoSize : null,
-      garment, kind: finalKind, name: String(name || '').slice(0, 80), flat: /\.png$/i.test(url), timeoutMs: 100000 });
-    console.log('[probador]', out.model, finalKind, String(name || '').slice(0, 40), `${Date.now() - t0}ms`);
+      garments, kind: finalKind, name: String(name || '').slice(0, 80), timeoutMs: 100000 });
+    console.log('[probador]', out.model, finalKind, `${garments.length} fotos`, String(name || '').slice(0, 40), `${Date.now() - t0}ms`);
     out.kind = finalKind;
     return res.status(200).json(out);
   } catch (e) {

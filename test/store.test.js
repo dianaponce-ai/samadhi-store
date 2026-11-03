@@ -357,6 +357,7 @@ test('Gemini: arma el pedido con las dos fotos y la indicación', async () => {
   assert.equal(closestRatio(720, 1280), '9:16');
   assert.equal(closestRatio(1000, 1500), '2:3');
   assert.match(buildPrompt({ kind: 'top', name: 'Blusa Flor' }), /top \(blouse.*Blusa Flor.*ONLY the top.*instead of her current top/s);
+  assert.match(buildPrompt({ kind: 'full', name: 'Vestido Juana', count: 2 }), /Images 2 to 3.*hanger.*length.*mid-thigh on her/s);
   assert.match(buildPrompt({ kind: 'full', name: 'Vestido Juana' }), /complete outfit change.*ONLY this dress.*bare legs/s);
   assert.match(buildPrompt({ kind: 'outer', name: 'Blazer July' }), /outer layer.*over her current clothes/s);
   // Tipo de prenda: sin recorte se adivina por nombre y categorías; conjuntos y abrigos ganan sobre el recorte.

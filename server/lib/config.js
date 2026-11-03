@@ -40,7 +40,7 @@ export const config = {
   gemini: {
     // Probador con IA de Google (Gemini, modelos de imagen). Clave de Google AI Studio.
     apiKey: env('GEMINI_API_KEY'),
-    model: env('GEMINI_IMAGE_MODEL', 'gemini-2.5-flash-image'),
+    model: env('GEMINI_IMAGE_MODEL', '') || undefined, // vacío: gemini-3.1-flash-image y alternativas
   },
   fashn: {
     // Probador virtual con IA (https://fashn.ai). Sin clave queda en modo prueba.

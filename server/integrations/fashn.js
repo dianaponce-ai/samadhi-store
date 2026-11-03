@@ -98,8 +98,11 @@ export async function startTryon({ productId, image = 0, photo, photoSize }, ip,
     jobs.set(id, job);
     (async () => {
       try {
-        const garmentImg = await loadGarment(garment);
-        const r = await geminiTryOn({ apiKey: config.gemini.apiKey, model: config.gemini.model, person: photo, personSize: Array.isArray(photoSize) ? photoSize : null, garment: garmentImg, kind, name: p.name, flat: /\.png$/i.test(garment) });
+        // Todas las fotos del producto (hasta 3): la de la modelo da el largo y el calce; la de percha o detalle, los detalles.
+        const urls = [...new Set([...imgs.slice(0, 3).map((x) => x.url), garment])].slice(0, 3);
+        const garments = (await Promise.allSettled(urls.map(loadGarment))).filter((x) => x.status === 'fulfilled').map((x) => x.value);
+        if (!garments.length) throw Object.assign(new Error('No pudimos cargar la foto de la prenda.'), { code: 'servicio' });
+        const r = await geminiTryOn({ apiKey: config.gemini.apiKey, model: config.gemini.model, person: photo, personSize: Array.isArray(photoSize) ? photoSize : null, garments, kind, name: p.name });
         job.done = r.image;
       } catch (e) { job.error = e; console.error('[probador gemini]', e.code, e.detail || e.message); }
     })();
