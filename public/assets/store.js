@@ -78,6 +78,8 @@ function prepare(cat) {
     p.colors = [...new Set(p.variants.map((v) => v.color).filter(Boolean))];
     p.sizes = [...new Set(p.variants.map((v) => v.size).filter(Boolean))].sort(sizeSort);
     p.others = [...new Set(p.variants.map((v) => v.other).filter(Boolean))];
+    p.colorImages ||= {};
+    p.colored = new Set(Object.values(p.colorImages).flat());
     for (const v of p.variants) variantById.set(v.id, { ...v, product: p });
   }
 }
@@ -287,11 +289,19 @@ function filtered() {
   return list;
 }
 const SUBS = { all: 'Lo auténtico también se viste.', new: 'La colección de esta temporada.', sale: 'Precios especiales, mientras haya talle.' };
+// Fotos según el color elegido: primero las de ese color y después las generales (sin las de otros colores).
+function imagesFor(p, color) {
+  const own = (color && p.colorImages?.[color]) || [];
+  if (!own.length) return p.images;
+  return [...own, ...p.images.filter((u) => !p.colored.has(u) && !own.includes(u))];
+}
+const firstColorOf = (p) => p.variants.find(avail)?.color || p.colors[0] || '';
 function cardHTML(p) {
   const badges = [!p.inStock ? '<span class="badge outb">Agotado</span>' : '', p.promo ? `<span class="badge off">−${offPct(p)}%</span>` : '', p.isNew && !p.promo && p.inStock ? '<span class="badge">Nuevo</span>' : ''].join('');
-  const firstColor = p.variants.find(avail)?.color || p.colors[0] || '';
+  const firstColor = firstColorOf(p);
+  const imgs = imagesFor(p, firstColor);
   return `<button class="card ${p.inStock ? '' : 'out'}" data-p="${esc(p.slug)}">
-    <div class="img">${imgTag(p, p.images[0], { color: firstColor })}${p.images[1] ? imgTag(p, p.images[1], { cls: 'alt', color: firstColor }) : ''}<div class="badges">${badges}</div><div class="quick">Ver prenda</div></div>
+    <div class="img">${imgTag(p, imgs[0], { color: firstColor })}${imgs[1] ? imgTag(p, imgs[1], { cls: 'alt', color: firstColor }) : ''}<div class="badges">${badges}</div><div class="quick">Ver prenda</div></div>
     <div class="nm">${esc(p.name)}</div>
     <div class="meta-row"><div class="price money">${p.promo ? `<b>${fmt(p.promo)}</b><s>${fmt(p.price)}</s>` : `<b>${fmt(p.price)}</b>`}</div>
     ${p.colors.length > 1 ? `<div class="dots" aria-label="${p.colors.length} colores">${p.colors.slice(0, 5).map((c) => `<span class="dot" title="${esc(c)}" style="background:${colorHex(c)}"></span>`).join('')}</div>` : ''}</div>
@@ -356,7 +366,8 @@ function renderModal() {
   if (v && !avail(v) && !needsSize) note = 'Este color y talle se agotó';
   const price = v ? (v.promo ?? v.price) : nowPrice(p);
   const list = v ? v.price : p.price;
-  const images = p.images.length ? p.images : [null];
+  const shown = imagesFor(p, color);
+  const images = shown.length ? shown : [null];
   const cat = p.categories.map((id) => CAT.categories.find((c) => c.id === id)).find(Boolean);
   const { details, measures } = splitDesc(p.desc);
   const fav = favs.has(p.id);
@@ -439,7 +450,7 @@ function bindModal() {
       addToCart(v.id, cur.qty);
       closeLayers(); openCart(); return;
     }
-    if (t.closest('[data-tryon]')) { const p = cur.p, img = cur.img; closeLayers(); openTryon(p, img); return; }
+    if (t.closest('[data-tryon]')) { const p = cur.p, color = cur.color; closeLayers(); openTryon(p, 0, color); return; }
     if (t.closest('[data-fav]')) { const id = cur.p.id; if (favs.has(id)) favs.delete(id); else favs.add(id); saveFavs(); toast(favs.has(id) ? 'Agregado a tus favoritos' : 'Sacado de tus favoritos'); renderModal(); return; }
     if (t.closest('[data-guide]')) { const d = $('#pdpMeasures'); if (d) { d.open = true; d.scrollIntoView({ behavior: 'smooth', block: 'center' }); } return; }
     if (t.closest('[data-add-bar]')) { const b = $('#addBtn'); if (b && !b.disabled) b.click(); else $('#modal .pdp-info .sizes, #modal .pdp-info .swatches')?.scrollIntoView({ behavior: 'smooth', block: 'center' }); return; }
@@ -477,7 +488,7 @@ function renderDrawer() {
   if (co.step === 'bag') {
     $('#drawer').innerHTML = head('Tu bolsa') + `<div class="dbody">${lines.map((l, ix) => `
       <div class="line-item">
-        <div class="th">${imgTag(l.p, l.p.images[0], { sizes: '76px', color: l.v.color })}</div>
+        <div class="th">${imgTag(l.p, imagesFor(l.p, l.v.color)[0], { sizes: '76px', color: l.v.color })}</div>
         <div><div class="nm">${esc(l.p.name)}</div><div class="vr">${esc(vLabel(l.v))}</div>
           <div style="display:flex;align-items:center;gap:14px;margin-top:10px"><div class="qty"><button data-iq="${ix}|-1" aria-label="Menos" ${l.qty <= 1 ? 'disabled' : ''}>−</button><span>${l.qty}</span><button data-iq="${ix}|1" aria-label="Más" ${l.qty >= l.max ? 'disabled' : ''}>+</button></div>
           <button class="link-btn" data-rm="${ix}">Quitar</button></div></div>
@@ -988,7 +999,7 @@ function cartNudge() {
   const el = document.createElement('aside');
   el.className = 'nudge';
   el.setAttribute('role', 'status');
-  el.innerHTML = `<div class="nudge-imgs">${lines.slice(0, 3).map((l) => imgTag(l.p, l.p.images[0], { sizes: '56px', color: l.v.color })).join('')}</div>
+  el.innerHTML = `<div class="nudge-imgs">${lines.slice(0, 3).map((l) => imgTag(l.p, imagesFor(l.p, l.v.color)[0], { sizes: '56px', color: l.v.color })).join('')}</div>
     <div class="nudge-txt"><div class="it">Tenés un carrito esperándote.</div><div class="note">${n} ${n === 1 ? 'prenda' : 'prendas'} · ${fmt(subtotal())}${lines.some((l) => l.v.stock !== null && l.v.stock <= 2) ? ' · quedan pocas unidades' : ''}</div>
     <div class="nudge-btns"><button class="btn solid sm" data-nudge="open">Ver mi bolsa</button><button class="link-btn" data-nudge="close">Ahora no</button></div></div>
     <button class="nudge-x" data-nudge="close" aria-label="Cerrar aviso"><svg viewBox="0 0 16 16"><path d="M3 3l10 10M13 3L3 13"/></svg></button>`;
@@ -1172,7 +1183,7 @@ const TRY_KEY = 'samadhi-probador-foto';
 const own = () => (CAT.tryon?.engine || 'samadhi') === 'samadhi' || tr.fallback;
 const iaName = () => (CAT.tryon?.engine === 'gemini' ? 'Google (Gemini)' : 'el servicio de IA');
 const tryonOk = (p) => !!(CAT.tryon?.enabled && p && p.images.length && (own() ? CAT.tryon.garments?.[p.id] : !p.categories.some((id) => (CAT.tryon.hidden || []).includes(id))));
-const tr = { fallback: false, p: null, img: 0, photo: null, base: null, result: null, look: [], status: 'photo', error: '', note: '', remember: false, consent: false, picking: false, q: '', log: null, mock: false, cmp: 50, body: null, bodyImg: null, size: '', live: null };
+const tr = { fallback: false, p: null, img: 0, color: '', photo: null, base: null, result: null, look: [], status: 'photo', error: '', note: '', remember: false, consent: false, picking: false, q: '', log: null, mock: false, cmp: 50, body: null, bodyImg: null, size: '', live: null };
 try { const saved = localStorage.getItem(TRY_KEY); if (saved) { tr.photo = saved; tr.remember = true; tr.consent = true; } } catch {}
 let ENGINE = null;
 async function engine() {
@@ -1192,10 +1203,10 @@ function askLoginForTryon(p, img) {
   renderAccount(); openLayer('#acct');
 }
 function resumeTryon() { if (!pendingTryon || tryonNeedsLogin()) return; const { p, img } = pendingTryon; pendingTryon = null; acct.notice = ''; closeLayers(); openTryon(p, img); }
-function openTryon(p, img = 0) {
+function openTryon(p, img = 0, color = '') {
   if (!CAT.tryon?.enabled) return;
   if (tryonNeedsLogin()) return askLoginForTryon(p, img);
-  tr.p = p && tryonOk(p) ? p : null; tr.img = img; tr.error = ''; tr.note = ''; tr.result = null; tr.mock = false; tr.base = tr.photo; tr.picking = !tr.p; tr.size = '';
+  tr.p = p && tryonOk(p) ? p : null; tr.img = img; tr.color = tr.p ? (tr.p.colors.includes(color) ? color : firstColorOf(tr.p)) : ''; tr.error = ''; tr.note = ''; tr.result = null; tr.mock = false; tr.base = tr.photo; tr.picking = !tr.p; tr.size = '';
   if (!own()) tr.look = [];
   tr.status = tr.photo ? 'ready' : 'photo';
   renderTryon();
@@ -1295,7 +1306,7 @@ function renderTryon() {
   const busyTxt = tr.status === 'analyzing' ? (ENGINE ? 'Mirando tu foto…' : 'Preparando el probador…') : own() ? 'Calzando la prenda…' : 'Probándote la prenda…';
   let stage;
   if (tr.live) stage = `<div class="tr-photo"><canvas id="trLive" class="tr-live" aria-label="Espejo en vivo"></canvas><button class="btn sm tr-live-stop" type="button" data-live-stop>Volver a mi foto</button></div>`;
-  else if (tr.mock) stage = `<div class="tr-mock"><img src="${esc(tr.base)}" alt="Tu foto"><div class="tr-mock-g">${imgTag(p, p.images[tr.img], { sizes: '200px' })}</div>
+  else if (tr.mock) stage = `<div class="tr-mock"><img src="${esc(tr.base)}" alt="Tu foto"><div class="tr-mock-g">${imgTag(p, imagesFor(p, tr.color)[tr.img], { sizes: '200px' })}</div>
         <div class="tr-mock-note"><b>Modo prueba</b> Con el servicio conectado, acá ves tu foto con ${esc(p.name)} puesta, generada con IA.</div></div>`;
   else if (tr.result) stage = `<div class="tr-cmp" style="--x:${tr.cmp}%"><img class="a" src="${esc(tr.result)}" alt="Vos con ${esc((own() ? tr.look.map((x) => x.p.name).join(' y ') : p.name))}"><img class="b" src="${esc(tr.base)}" alt="Tu foto original"><span class="tr-cmp-line" aria-hidden="true"></span>
         <input type="range" min="0" max="100" value="${tr.cmp}" data-cmp aria-label="Comparar con tu foto original"><span class="tr-tag l">Tu foto</span><span class="tr-tag r">${own() ? 'Probador' : 'Con ' + esc(p.name)}</span></div>`;
@@ -1307,8 +1318,9 @@ function renderTryon() {
       <div class="tr-grid">${tryCats().filter((x) => !tr.q || norm(x.name).includes(norm(tr.q))).slice(0, 48).map((x) => `<button type="button" data-pick="${x.id}" class="${p?.id === x.id ? 'on' : ''}">${imgTag(x, x.images[0], { sizes: '120px' })}<span>${esc(x.name)}</span></button>`).join('')}</div>
       ${tr.look.length ? '<button class="link-btn" type="button" data-unpick>Volver al look</button>' : ''}</div>`;
   const garment = p ? `<div class="tr-garment">
-      <div class="tr-g-imgs">${p.images.slice(0, own() ? 1 : 5).map((u, i) => `<button type="button" data-gimg="${i}" class="${i === tr.img ? 'on' : ''}" aria-label="Usar la foto ${i + 1}">${imgTag(p, u, { sizes: '72px' })}</button>`).join('')}</div>
+      <div class="tr-g-imgs">${imagesFor(p, tr.color).slice(0, own() ? 1 : 5).map((u, i) => `<button type="button" data-gimg="${i}" class="${i === tr.img ? 'on' : ''}" aria-label="Usar la foto ${i + 1}">${imgTag(p, u, { sizes: '72px' })}</button>`).join('')}</div>
       <div><div class="caps" style="color:var(--suave)">Prenda</div><div class="tr-g-name">${esc(p.name)}</div><div class="money">${fmt(nowPrice(p))}</div>
+      ${!own() && p.colors.length > 1 ? `<div class="tr-colors" aria-label="Color">${p.colors.map((c) => `<button type="button" class="sw ${c === tr.color ? 'on' : ''}" data-tcolor="${esc(c)}" title="${esc(c)}" aria-label="${esc(c)}" style="background:${colorHex(c)}"></button>`).join('')}<span class="tr-color-name">${esc(tr.color)}</span></div>` : ''}
       <button class="link-btn" type="button" data-repick>Cambiar de prenda</button></div></div>` : '';
   const privacy = own() ? 'Tu foto no sale de tu celular: el probador funciona en tu navegador y no la guardamos.' : `Tu foto se envía a ${iaName()} sólo para generar la imagen; la tienda no la guarda.`;
   const sizes = () => {
@@ -1366,7 +1378,8 @@ async function runTryon() {
   tr.status = 'working'; tr.error = ''; renderTryon();
   try {
     const size = await new Promise((ok) => { const i = new Image(); i.onload = () => ok([i.naturalWidth, i.naturalHeight]); i.onerror = () => ok(null); i.src = tr.base; });
-    const st = await api('/api/tryon', { productId: tr.p.id, image: tr.img, photo: tr.base, photoSize: size, garmentUrl: tr.p.images[tr.img], garmentUrls: [...new Set([...tr.p.images.slice(0, 3), tr.p.images[tr.img]])].slice(0, 3), kind: CAT.tryon.garments?.[tr.p.id]?.kind || null, name: tr.p.name });
+    const gImgs = imagesFor(tr.p, tr.color); // sólo fotos del color elegido (y las generales), así Gemini no mezcla colores
+    const st = await api('/api/tryon', { productId: tr.p.id, image: tr.img, photo: tr.base, photoSize: size, garmentUrl: gImgs[tr.img] || gImgs[0], garmentUrls: [...new Set([...gImgs.slice(0, 3), gImgs[tr.img] || gImgs[0]])].slice(0, 3), color: tr.color, kind: CAT.tryon.garments?.[tr.p.id]?.kind || null, name: tr.p.name });
     for (let i = 0; i < 80; i++) {
       await new Promise((ok) => setTimeout(ok, i === 0 ? 400 : 1500));
       const r = await api('/api/tryon/' + encodeURIComponent(st.id));
@@ -1393,13 +1406,14 @@ function bindTryon() {
     if (t.closest('[data-tclose]')) return closeAll();
     const pk = t.closest('[data-pick]');
     if (pk) {
-      tr.p = CAT.products.find((x) => x.id === Number(pk.dataset.pick)); tr.img = 0; tr.picking = false; tr.size = ''; tr.error = '';
+      tr.p = CAT.products.find((x) => x.id === Number(pk.dataset.pick)); tr.img = 0; tr.color = firstColorOf(tr.p); tr.picking = false; tr.size = ''; tr.error = '';
       if (own()) { if (tr.body) return addToLook(tr.p); return renderTryon(); }
       tr.result = null; tr.mock = false; return renderTryon();
     }
     if (t.closest('[data-unpick]')) { tr.picking = false; tr.p = tr.look.at(-1)?.p || tr.p; return renderTryon(); }
     if (t.closest('[data-repick]')) { tr.picking = true; if (!own()) { tr.result = null; tr.mock = false; } return renderTryon(); }
     const ul = t.closest('[data-unlook]'); if (ul) { tr.look = tr.look.filter((x) => x.p.id !== Number(ul.dataset.unlook)); if (!tr.look.length) tr.result = null; drawLook(); return renderTryon(); }
+    const tc = t.closest('[data-tcolor]'); if (tc) { tr.color = tc.dataset.tcolor; tr.img = 0; if (!own()) { tr.result = null; tr.mock = false; } return renderTryon(); }
     const gi = t.closest('[data-gimg]'); if (gi) { tr.img = Number(gi.dataset.gimg); if (!own()) { tr.result = null; tr.mock = false; } return renderTryon(); }
     if (t.closest('[data-go-try]')) return runTryon();
     if (t.closest('[data-live-stop]')) { stopLive(); return renderTryon(); }

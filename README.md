@@ -1,6 +1,6 @@
 # Samadhi Style · tienda online
 
-Tienda propia para **samadhistyle.com.ar**: vidriera con la identidad de Samadhi, panel de administración, cobros con **Mercado Pago** y envíos con **Andreani**. Viene cargada con el catálogo exportado de Tiendanube (201 prendas publicadas, 322 en total) y las fotos de cada producto.
+Tienda propia para **samadhistyle.com.ar**: vidriera con la identidad de Samadhi, panel de administración, cobros con **Mercado Pago** y envíos con **Andreani**. Viene cargada con el catálogo exportado de Tiendanube (225 prendas publicadas, 355 en total) y las fotos de cada producto.
 
 ## Qué incluye
 
@@ -170,6 +170,10 @@ Imagen fotorrealista en unos 8 segundos, 1 crédito por prueba. Creá una cuenta
 
 Mientras sigas cargando productos en Tiendanube, exportá el CSV (*Productos → Exportar*) y subilo en el panel en **Importar**. Se actualizan precios, promociones y stock por variante y se agregan los productos nuevos.
 
+Para reemplazar el catálogo entero, poné el CSV en `data/import/tiendanube-productos.csv` y corré `npm run import`: el archivo manda y **se borran los productos que no estén en él** (con `npm run import -- --conservar` no se borra nada). Los pedidos viejos no se pierden porque guardan nombre y talle.
+
+**Fotos por color.** `data/import/fotos-colores.txt` dice qué foto corresponde a cada color (la que Tiendanube asigna a cada variante). Al elegir un color, la tienda y el probador muestran primero esa foto y ocultan las de los otros colores. En el panel, cada foto de un producto con varios colores tiene un selector para atarla a un color.
+
 ## Estructura
 
 ```
@@ -180,6 +184,6 @@ public/            vidriera (index.html, pedido.html)
 admin/             panel de administración
 lince/             agente para la PC del local (Windows)
 scripts/           importar, crear usuario, copiar fotos
-data/import/       CSV de Tiendanube y lista de fotos por producto
+data/import/       CSV de Tiendanube, fotos por producto y fotos por color
 test/              prueba de punta a punta
 ```

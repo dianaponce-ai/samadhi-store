@@ -124,6 +124,7 @@ td.r, th.r { text-align: right; }
 .imgs { display: flex; gap: 10px; flex-wrap: wrap; }
 .imgs .im { position: relative; width: 96px; }
 .imgs .im img { width: 96px; height: 124px; object-fit: cover; border-radius: 6px; background: var(--arena); display: block; }
+.imgs .im .im-color { width: 100%; margin-top: 4px; font-size: 11px; padding: 2px 4px; }
 .imgs .im .ops { display: flex; justify-content: space-between; margin-top: 4px; }
 .imgs .im .ops button { font-size: 12px; color: var(--muted); }
 .imgs .im .ops button:hover { color: var(--ink); }

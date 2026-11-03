@@ -32,7 +32,7 @@ function seedStateInner() {
     products: SEED.products.map((p, i) => ({
       id: p.id, slug: p.slug, name: p.name, ref_code: p.ref || '', description: p.desc || '', collection: p.collection || '',
       visible: 1, featured: p.featured ? 1 : 0, free_shipping: p.freeShipping ? 1 : 0, position: i, weight_kg: 0.5, height_cm: 5, width_cm: 30, depth_cm: 30,
-      seo_title: '', seo_description: '', images: [...p.images], categories: [...p.categories],
+      seo_title: '', seo_description: '', images: [...p.images], imageColors: Object.fromEntries(Object.entries(p.colorImages || {}).flatMap(([c, us]) => us.map((u) => [u, c]))), categories: [...p.categories],
       variants: p.variants.map((v) => ({ id: v.id, color: v.color, size: v.size, other: v.other || '', price: v.price, promo_price: v.promo, stock: v.stock, sku: '', barcode: '' })),
     })),
     categories: SEED.categories.map((c, i) => ({ id: c.id, name: c.name, slug: c.slug, collection: c.collection || '', position: c.position ?? i, visible: 1 })),
@@ -71,7 +71,7 @@ function seedStateInner() {
     }
     // Clienta para probar el envío de emails (Diana): se probó algunas prendas hace poco.
     const did = addCustomer(st, { email: 'diana@nifty-agency.com', name: 'Diana Ponce Atencio', phone: '', created_at: sqlDate(new Date(Date.now() - 2 * 864e5)) });
-    const picks = ['vestido-juana', 'blazer-fucsia', 'blazer-lola', 'wide-leg'].map((k) => pool.find((p) => p.slug.startsWith(k))).filter(Boolean);
+    const picks = ['vestido-juana', 'blazer-july', 'blazer-lola', 'wide-leg'].map((k) => pool.find((p) => p.slug.startsWith(k))).filter(Boolean);
     picks.forEach((p, k) => st.tryons.push({ id: st.tryons.length + 1, at: sqlDate(new Date(Date.now() - (k + 1) * 3 * 3600e3)), product_id: p.id, status: 'lista', ms: 9000, added: k === 1 ? 1 : 0, customer_id: did }));
   }
   { // Un arrepentimiento de ejemplo, para ver la sección en el panel.
@@ -367,7 +367,7 @@ function publicCatalog() {
     const min = Math.min(...vs.map((v) => v.promo ?? v.price));
     const ref = vs.find((v) => (v.promo ?? v.price) === min) || vs[0];
     return { id: p.id, slug: p.slug, name: p.name, ref: p.ref_code, desc: p.description, collection: p.collection, featured: !!p.featured, freeShipping: !!p.free_shipping,
-      isNew: /SS'27/.test(p.collection), images: p.images, categories: p.categories, price: ref.price, promo: ref.promo, variants: vs, inStock: vs.some((v) => v.stock === null || v.stock > 0) };
+      isNew: /SS'27/.test(p.collection), images: p.images, colorImages: Object.entries(p.imageColors || {}).filter(([u]) => p.images.includes(u)).reduce((m, [u, c]) => ((m[c] ||= []).push(u), m), {}), categories: p.categories, price: ref.price, promo: ref.promo, variants: vs, inStock: vs.some((v) => v.stock === null || v.stock > 0) };
   });
   const used = new Set(products.flatMap((p) => p.categories));
   const st = S.settings;
@@ -769,7 +769,7 @@ function adminRoute(method, path, q, b, raw) {
     Object.assign(p, {
       name: b.name.trim(), slug: slugify(b.slug || b.name), ref_code: b.ref_code || '', description: b.description || '', collection: b.collection || '', visible: b.visible ? 1 : 0,
       featured: b.featured ? 1 : 0, free_shipping: b.free_shipping ? 1 : 0, weight_kg: Number(b.weight_kg) || 0.5, height_cm: Number(b.height_cm) || 5, width_cm: Number(b.width_cm) || 30, depth_cm: Number(b.depth_cm) || 30,
-      seo_title: b.seo_title || '', seo_description: b.seo_description || '', categories: (b.categories || []).map(Number), images: (b.images || []).filter(Boolean),
+      seo_title: b.seo_title || '', seo_description: b.seo_description || '', categories: (b.categories || []).map(Number), images: (b.images || []).filter(Boolean), imageColors: b.imageColors && typeof b.imageColors === 'object' ? { ...b.imageColors } : (p.imageColors || {}),
       variants: b.variants.map((v) => ({ id: Number(v.id) || ++S.ids.variant, color: String(v.color || '').trim(), size: String(v.size || '').trim().toUpperCase(), other: v.other || '', price: Math.round(v.price),
         promo_price: Number(v.promo_price) > 0 && Number(v.promo_price) < Number(v.price) ? Math.round(v.promo_price) : null, stock: v.stock === '' || v.stock === null || v.stock === undefined ? null : Math.max(0, Math.round(v.stock)), sku: v.sku || '', barcode: '' })),
     });
@@ -1012,7 +1012,7 @@ window.__SAMADHI_API = async (url, { method = 'GET', body } = {}) => {
     if (S.settings.tryon.requireLogin !== false && !customerMe() && !S.session.staff) { const err = new Error('Para usar el probador virtual ingresá a tu cuenta (o creala, es gratis).'); err.data = { code: 'login' }; err.status = 401; throw err; }
     if (!p) { const err = new Error('No encontramos esa prenda.'); err.status = 404; throw err; }
     let r, d = {};
-    try { r = await fetch('/api/probador', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ photo: b.photo, photoSize: b.photoSize, garmentUrl: b.garmentUrl, garmentUrls: b.garmentUrls, kind: b.kind || S.garments[p.id]?.kind, name: p.name, categories: (p.categories || []).map((id) => S.categories.find((c) => c.id === id)?.name).filter(Boolean) }) }); d = await r.json().catch(() => ({})); }
+    try { r = await fetch('/api/probador', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ photo: b.photo, photoSize: b.photoSize, garmentUrl: b.garmentUrl, garmentUrls: b.garmentUrls, color: b.color || '', kind: b.kind || S.garments[p.id]?.kind, name: p.name, categories: (p.categories || []).map((id) => S.categories.find((c) => c.id === id)?.name).filter(Boolean) }) }); d = await r.json().catch(() => ({})); }
     catch { r = null; }
     if (!r || r.status === 404 || r.status === 405 || d.code === 'sin-clave') { const err = new Error('El probador con IA no está disponible acá.'); err.data = { code: 'sin-ia' }; err.status = 503; throw err; }
     if (!r.ok || !d.image) { const err = new Error(d.error || 'No pudimos generar la imagen.'); err.data = { code: d.code, detail: d.detail || `${r.status}` }; err.status = r.status; throw err; }

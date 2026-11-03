@@ -56,7 +56,8 @@ app.use((err, req, res, next) => {
   const fotos = path.join(ROOT, 'data/import/fotos-tiendanube.txt');
   if (get('SELECT COUNT(*) AS n FROM products').n === 0 && existsSync(csv)) {
     const { importTiendanube, seedBannersIfEmpty, seedFeaturedIfEmpty, importExtras } = await import('./lib/importer.js');
-    const s = importTiendanube(readFileSync(csv), existsSync(fotos) ? readFileSync(fotos, 'utf8') : '');
+    const colores = path.join(ROOT, 'data/import/fotos-colores.txt');
+    const s = importTiendanube(readFileSync(csv), existsSync(fotos) ? readFileSync(fotos, 'utf8') : '', { colorPhotos: existsSync(colores) ? readFileSync(colores, 'utf8') : '' });
     seedFeaturedIfEmpty();
     seedBannersIfEmpty();
     importExtras(path.join(ROOT, 'data/import/productos-extra.json'));

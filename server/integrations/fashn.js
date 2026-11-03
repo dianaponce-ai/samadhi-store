@@ -68,13 +68,17 @@ const jobs = new Map(); // id → { fashnId, logId, started, productId }
 const whoHash = (ip) => crypto.createHmac('sha256', config.sessionSecret).update('tryon:' + ip).digest('base64url').slice(0, 16);
 const abs = (u) => (/^https?:/.test(u) ? u : `${config.publicUrl}/${String(u).replace(/^\//, '')}`);
 
-export async function startTryon({ productId, image = 0, photo, photoSize }, ip, customer = null, staff = null) {
+export async function startTryon({ productId, image = 0, photo, photoSize, color = '' }, ip, customer = null, staff = null) {
   const s = tryonSettings();
   if (!s.enabled) throw new HttpError(403, 'El probador virtual no está disponible en este momento.');
   needLogin(customer, staff);
   const p = get('SELECT id, name FROM products WHERE id = ? AND visible = 1', Number(productId));
   if (!p) throw new HttpError(404, 'No encontramos esa prenda.');
-  const imgs = all('SELECT url FROM images WHERE product_id = ? ORDER BY position', p.id);
+  // Fotos del color elegido primero, después las generales; nunca las de otros colores (Gemini mezclaría colores).
+  const allImgs = all('SELECT url, color FROM images WHERE product_id = ? ORDER BY position', p.id);
+  const want = String(color || '');
+  const mine = allImgs.filter((i) => want && i.color === want);
+  const imgs = mine.length ? [...mine, ...allImgs.filter((i) => !i.color)] : allImgs;
   const garment = imgs[Math.min(Math.max(0, Number(image) || 0), imgs.length - 1)]?.url;
   if (!garment) throw new HttpError(422, 'Esta prenda no tiene foto para probar.');
   if (!/^data:image\/(jpeg|png|webp);base64,/.test(String(photo || ''))) throw new HttpError(422, 'Subí una foto tuya de cuerpo entero (JPG o PNG).');
@@ -102,7 +106,7 @@ export async function startTryon({ productId, image = 0, photo, photoSize }, ip,
         const urls = [...new Set([...imgs.slice(0, 3).map((x) => x.url), garment])].slice(0, 3);
         const garments = (await Promise.allSettled(urls.map(loadGarment))).filter((x) => x.status === 'fulfilled').map((x) => x.value);
         if (!garments.length) throw Object.assign(new Error('No pudimos cargar la foto de la prenda.'), { code: 'servicio' });
-        const r = await geminiTryOn({ apiKey: config.gemini.apiKey, model: config.gemini.model, person: photo, personSize: Array.isArray(photoSize) ? photoSize : null, garments, kind, name: p.name });
+        const r = await geminiTryOn({ apiKey: config.gemini.apiKey, model: config.gemini.model, person: photo, personSize: Array.isArray(photoSize) ? photoSize : null, garments, kind, name: mine.length ? `${p.name} (${want})` : p.name });
         job.done = r.image;
       } catch (e) { job.error = e; console.error('[probador gemini]', e.code, e.detail || e.message); }
     })();

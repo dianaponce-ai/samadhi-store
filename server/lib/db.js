@@ -187,6 +187,7 @@ for (const [table, col, def] of [
   ['admin_users', 'role', "TEXT NOT NULL DEFAULT 'admin'"],
   ['customers', 'password_hash', 'TEXT'],
   ['banners', 'video_url', "TEXT NOT NULL DEFAULT ''"],
+  ['images', 'color', "TEXT NOT NULL DEFAULT ''"], // foto de un color puntual (vacío: foto general)
 ]) {
   const cols = db.prepare(`PRAGMA table_info(${table})`).all().map((c) => c.name);
   if (!cols.includes(col)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${col} ${def}`);

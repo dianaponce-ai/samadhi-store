@@ -163,6 +163,7 @@ function productDetail(id) {
     ...p,
     variants: all('SELECT * FROM variants WHERE product_id = ? ORDER BY position, id', id),
     images: all('SELECT id, url FROM images WHERE product_id = ? ORDER BY position, id', id).map((i) => i.url),
+    imageColors: Object.fromEntries(all("SELECT url, color FROM images WHERE product_id = ? AND color <> ''", id).map((i) => [i.url, i.color])),
     categories: all('SELECT category_id FROM product_categories WHERE product_id = ?', id).map((r) => r.category_id),
     sold: get(`SELECT COALESCE(SUM(oi.qty),0) AS n FROM order_items oi JOIN orders o ON o.id = oi.order_id WHERE oi.product_id = ? AND o.status NOT IN ('pending_payment','cancelled','refunded')`, id).n,
   };
@@ -206,7 +207,8 @@ function saveProduct(id, b) {
     });
     run(`DELETE FROM variants WHERE product_id = ? AND id NOT IN (${keep.map(() => '?').join(',')})`, id, ...keep);
     run('DELETE FROM images WHERE product_id = ?', id);
-    (b.images || []).filter(Boolean).forEach((url, i) => run('INSERT INTO images(product_id, url, position) VALUES(?,?,?)', id, String(url), i));
+    const colorOf = b.imageColors && typeof b.imageColors === 'object' ? b.imageColors : {};
+    (b.images || []).filter(Boolean).forEach((url, i) => run('INSERT INTO images(product_id, url, position, color) VALUES(?,?,?,?)', id, String(url), i, String(colorOf[url] || '').slice(0, 60)));
     invalidateCatalog();
     return id;
   });

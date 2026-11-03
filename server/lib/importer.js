@@ -102,7 +102,28 @@ export function parsePhotos(text) {
   return map;
 }
 
-export function importTiendanube(csvBuffer, photosText = '') {
+/**
+ * Fotos por color (data/import/fotos-colores.txt): una línea por color, "slug<TAB>Color<TAB>archivo [archivo…]".
+ * Es la foto que Tiendanube asigna a cada variante: al elegir ese color la tienda la muestra primero.
+ */
+export function parseColorPhotos(text) {
+  const map = new Map();
+  for (const line of String(text || '').split('\n')) {
+    if (!line.trim() || line.startsWith('#')) continue;
+    const [slug, color, files] = line.split('\t').map((x) => (x || '').trim());
+    if (!slug || !color || !files) continue;
+    const urls = files.split(/\s+/).filter(Boolean).map((f) => (f.startsWith('http') ? f : TN_CDN + f.replace(/\.(webp|jpe?g|png)$/i, '') + '-1024-1024.webp'));
+    if (!map.has(slug)) map.set(slug, []);
+    map.get(slug).push({ color: titleCase(color), urls });
+  }
+  return map;
+}
+
+/**
+ * opts.colorPhotos: texto de fotos por color. opts.prune: borra los productos que no están en el archivo
+ * (los pedidos viejos guardan nombre y talle, así que no se pierden).
+ */
+export function importTiendanube(csvBuffer, photosText = '', { colorPhotos = '', prune = false } = {}) {
   const rows = parseCsv(decodeCsv(csvBuffer));
   const head = rows.shift().map((h) => h.trim());
   const idx = (name) => head.indexOf(name);
@@ -154,7 +175,8 @@ export function importTiendanube(csvBuffer, photosText = '') {
   }
 
   const photos = parsePhotos(photosText);
-  const stats = { products: 0, created: 0, updated: 0, variants: 0, images: 0, hidden: 0 };
+  const byColor = parseColorPhotos(colorPhotos);
+  const stats = { products: 0, created: 0, updated: 0, variants: 0, images: 0, hidden: 0, colorImages: 0, deleted: 0 };
 
   tx(() => {
     const catId = (name, collection) => {
@@ -219,6 +241,31 @@ export function importTiendanube(csvBuffer, photosText = '') {
         run('DELETE FROM images WHERE product_id = ?', pid);
         imgs.forEach((url, i) => run('INSERT INTO images(product_id, url, position) VALUES(?,?,?)', pid, url, i));
         stats.images += imgs.length;
+      }
+      // Fotos por color: si la foto ya está en la galería se marca con su color; si no, se suma al final.
+      const colorImgs = byColor.get(p.slug) || [];
+      if (colorImgs.length) {
+        run("UPDATE images SET color = '' WHERE product_id = ?", pid);
+        const colors = new Set(p.variants.map((v) => v.color));
+        for (const { color, urls } of colorImgs) {
+          if (!colors.has(color)) continue;
+          for (const url of urls) {
+            const ex = get("SELECT id, color FROM images WHERE product_id = ? AND url = ? ORDER BY color = '' DESC LIMIT 1", pid, url);
+            if (ex && !ex.color) run('UPDATE images SET color = ? WHERE id = ?', color, ex.id);
+            else run('INSERT INTO images(product_id, url, position, color) VALUES(?,?,?,?)', pid, url, (get('SELECT COALESCE(MAX(position),0)+1 n FROM images WHERE product_id = ?', pid).n), color);
+            stats.colorImages++;
+          }
+        }
+      }
+    }
+    if (prune) {
+      const keep = new Set(products.keys());
+      const hasGarments = !!get("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'tryon_garments'");
+      for (const old of all('SELECT id, slug FROM products')) {
+        if (keep.has(old.slug)) continue;
+        run('DELETE FROM products WHERE id = ?', old.id);
+        if (hasGarments) run('DELETE FROM tryon_garments WHERE product_id = ?', old.id);
+        stats.deleted++;
       }
     }
   });

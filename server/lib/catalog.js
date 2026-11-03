@@ -12,7 +12,7 @@ export function publicCatalog() {
                         FROM products WHERE visible = 1 ORDER BY position, id`);
   const ids = new Set(products.map((p) => p.id));
   const variants = all('SELECT id, product_id, color, size, other, price, promo_price, stock FROM variants ORDER BY position, id');
-  const images = all('SELECT product_id, url FROM images ORDER BY position, id');
+  const images = all('SELECT product_id, url, color FROM images ORDER BY position, id');
   const pcs = all('SELECT product_id, category_id FROM product_categories');
   const byP = (rows) => rows.reduce((m, r) => (ids.has(r.product_id) && (m[r.product_id] ||= []).push(r), m), {});
   const V = byP(variants), I = byP(images), C = byP(pcs);
@@ -25,6 +25,7 @@ export function publicCatalog() {
       id: p.id, slug: p.slug, name: p.name, ref: p.ref_code, desc: p.description, collection: p.collection,
       featured: !!p.featured, freeShipping: !!p.free_shipping, isNew: /SS'27/.test(p.collection),
       images: (I[p.id] || []).map((i) => i.url),
+      colorImages: (I[p.id] || []).filter((i) => i.color).reduce((m, i) => ((m[i.color] ||= []).push(i.url), m), {}),
       categories: (C[p.id] || []).map((c) => c.category_id),
       price: ref.price ?? 0, promo: ref.promo ?? null,
       variants: vs,

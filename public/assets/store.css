@@ -481,6 +481,9 @@ footer ul button { font-size: 13px; text-align: left; }
 .tr-g-imgs button.on { outline-color: var(--tinta); }
 .tr-g-imgs img { width: 100%; height: 100%; object-fit: cover; }
 .tr-g-name { font-family: var(--serif); font-size: 24px; line-height: 1.15; margin: 4px 0; }
+.tr-colors { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 10px 0 4px; }
+.tr-colors .sw { width: 24px; height: 24px; }
+.tr-color-name { font-size: 12px; letter-spacing: .08em; color: var(--suave); }
 .tr-step { display: grid; gap: 14px; border-top: 1px solid var(--linea); padding-top: 18px; }
 .tr-tips { margin: 0; padding-left: 18px; font-size: 13px; line-height: 1.8; color: var(--suave); }
 .tr-check { display: flex; gap: 10px; align-items: flex-start; font-size: 13px; line-height: 1.45; cursor: pointer; }

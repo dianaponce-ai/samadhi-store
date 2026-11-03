@@ -296,13 +296,16 @@ async function viewProduct(id) {
   const isNew = id === 'nuevo';
   const cats = await api('/categories');
   const p = isNew ? { name: '', slug: '', ref_code: '', description: '', collection: '', visible: 1, featured: 0, free_shipping: 0, weight_kg: 0.5, height_cm: 5, width_cm: 30, depth_cm: 30, variants: [{ color: '', size: 'M', other: '', price: '', promo_price: '', stock: '', sku: '' }], images: [], categories: [], sold: 0 } : await api('/products/' + id);
-  const state = { images: [...p.images], variants: p.variants.map((v) => ({ ...v })) };
+  const state = { images: [...p.images], imageColors: { ...(p.imageColors || {}) }, variants: p.variants.map((v) => ({ ...v })) };
   const vRow = (v, i) => `<tr data-vi="${i}"><td><input data-f="color" value="${esc(v.color)}" placeholder="Color"></td><td><input data-f="size" value="${esc(v.size)}" placeholder="Talle" style="width:70px"></td>
     <td><input data-f="other" value="${esc(v.other || '')}" placeholder="—"></td><td><input data-f="price" type="number" min="0" value="${v.price ?? ''}" style="width:110px"></td>
     <td><input data-f="promo_price" type="number" min="0" value="${v.promo_price ?? ''}" style="width:110px" placeholder="—"></td>
     <td><input data-f="stock" type="number" min="0" value="${v.stock ?? ''}" style="width:80px" placeholder="∞"></td><td><input data-f="sku" value="${esc(v.sku || '')}" style="width:110px"></td>
     <td><button class="btn sm" data-vdel="${i}" aria-label="Quitar variante">✕</button></td></tr>`;
-  const imgsHTML = () => state.images.map((u, i) => `<div class="im ${i === 0 ? 'first' : ''}"><img src="${esc(thumb(u))}" alt=""><div class="ops"><button data-left="${i}" aria-label="Mover antes" ${i ? '' : 'disabled'}>←</button><button data-idel="${i}">Quitar</button><button data-right="${i}" aria-label="Mover después" ${i < state.images.length - 1 ? '' : 'disabled'}>→</button></div></div>`).join('') || '<p class="muted">Sin fotos todavía.</p>';
+  // Cada foto puede quedar atada a un color: al elegir ese color en la tienda se muestra primero.
+  const colorsNow = () => [...new Set(state.variants.map((v) => String(v.color || '').trim()).filter(Boolean))];
+  const colorSel = (u) => { const cs = colorsNow(); if (cs.length < 2) return ''; const cur = state.imageColors[u] || ''; return `<select class="im-color" data-icolor="${esc(u)}" aria-label="Color de esta foto"><option value="">Todos los colores</option>${cs.map((c) => `<option ${c === cur ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select>`; };
+  const imgsHTML = () => state.images.map((u, i) => `<div class="im ${i === 0 ? 'first' : ''}"><img src="${esc(thumb(u))}" alt="">${colorSel(u)}<div class="ops"><button data-left="${i}" aria-label="Mover antes" ${i ? '' : 'disabled'}>←</button><button data-idel="${i}">Quitar</button><button data-right="${i}" aria-label="Mover después" ${i < state.images.length - 1 ? '' : 'disabled'}>→</button></div></div>`).join('') || '<p class="muted">Sin fotos todavía.</p>';
   $('#view').innerHTML = `
     <div class="page-head"><div><a class="small linkish" href="#productos">← Productos</a><h1 style="margin-top:8px">${isNew ? 'Nuevo producto' : esc(p.name)}</h1>${isNew ? '' : `<div class="sub">${p.sold} vendidos · <a class="linkish" href="/#p/${esc(p.slug)}" target="_blank" rel="noopener">ver en la tienda</a></div>`}</div>
       <div class="actions">${isNew || !isAdmin() ? '' : '<button class="btn danger" id="del">Eliminar</button>'}<button class="btn primary" id="save">Guardar</button></div></div>
@@ -340,6 +343,7 @@ async function viewProduct(id) {
   const redrawI = () => { $('#imgs').innerHTML = imgsHTML(); };
   $('#addV').onclick = () => { readVariants(); const last = state.variants[state.variants.length - 1] || {}; state.variants.push({ color: last.color || '', size: '', other: '', price: last.price || '', promo_price: last.promo_price || '', stock: '', sku: '' }); redrawV(); };
   $('#vrows').onclick = (e) => { const b = e.target.closest('[data-vdel]'); if (!b) return; readVariants(); state.variants.splice(Number(b.dataset.vdel), 1); redrawV(); };
+  $('#imgs').onchange = (e) => { const sel = e.target.closest('[data-icolor]'); if (!sel) return; if (sel.value) state.imageColors[sel.dataset.icolor] = sel.value; else delete state.imageColors[sel.dataset.icolor]; };
   $('#imgs').onclick = (e) => {
     const t = e.target;
     if (t.dataset.idel) { state.images.splice(Number(t.dataset.idel), 1); redrawI(); }
@@ -359,7 +363,7 @@ async function viewProduct(id) {
     const body = {
       name: $('#p-name').value, ref_code: $('#p-ref').value, collection: $('#p-coll').value, description: $('#p-desc').value,
       visible: $('#p-vis').checked, featured: $('#p-feat').checked, free_shipping: $('#p-free').checked,
-      categories: $$('[data-cat]:checked').map((c) => Number(c.value)), images: state.images, variants: state.variants,
+      categories: $$('[data-cat]:checked').map((c) => Number(c.value)), images: state.images, imageColors: Object.fromEntries(Object.entries(state.imageColors).filter(([u]) => state.images.includes(u))), variants: state.variants,
       weight_kg: $('#p-w').value, height_cm: $('#p-h').value, width_cm: $('#p-wi').value, depth_cm: $('#p-d').value,
       slug: $('#p-slug').value, seo_title: $('#p-seot').value, seo_description: $('#p-seod').value,
     };

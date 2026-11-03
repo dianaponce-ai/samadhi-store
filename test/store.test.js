@@ -25,8 +25,12 @@ const json = async (p, opts = {}) => { const r = await fetch(B + p, { ...opts, h
 
 test('el catálogo trae los productos visibles con fotos', async () => {
   const { data } = await json('/api/catalog');
-  assert.equal(data.products.length, 202); // 201 de Tiendanube + el blazer de prueba del probador
-  assert.ok(data.products.filter((p) => p.images.length).length >= 199);
+  assert.equal(data.products.length, 225); // los visibles de la exportación de Tiendanube, sin productos de prueba
+  assert.equal(data.products.filter((p) => p.images.length).length, 225);
+  // Fotos por color: al elegir el color, la tienda muestra primero su foto.
+  const juana = data.products.find((p) => p.slug === 'vestido-juana-ogrvt');
+  assert.deepEqual(Object.keys(juana.colorImages).sort(), ['Chocolate', 'Negro']);
+  assert.ok(data.products.filter((p) => Object.keys(p.colorImages).length > 1).length >= 75);
   assert.ok(data.banners.length >= 3);
 });
 

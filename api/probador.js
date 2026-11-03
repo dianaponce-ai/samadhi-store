@@ -33,7 +33,7 @@ export default async function handler(req, res) {
   if (PER_HOUR > 0 && list.length >= PER_HOUR) return res.status(429).json({ error: 'Probaste muchas prendas seguidas. Esperá un rato y seguí.' });
   list.push(now); hits.set(ip, list);
 
-  const { photo, photoSize, garmentUrl, garmentUrls, kind, name, categories } = req.body || {};
+  const { photo, photoSize, garmentUrl, garmentUrls, kind, name, categories, color } = req.body || {};
   if (!/^data:image\/(jpeg|png|webp);base64,/.test(String(photo || '')) || photo.length > 4_000_000) return res.status(422).json({ error: 'Subí una foto tuya de cuerpo entero (JPG o PNG).' });
   // Todas las fotos del producto (hasta 3): la de la modelo da el largo y el calce; la de percha o detalle, los detalles.
   const urls = [...new Set([].concat(Array.isArray(garmentUrls) ? garmentUrls : [], garmentUrl || []).map((u) => garmentSrc(u, host)).filter(Boolean))].slice(0, 3);
@@ -45,7 +45,7 @@ export default async function handler(req, res) {
     const cats = Array.isArray(categories) ? categories.map((c) => String(c).slice(0, 40)).slice(0, 10) : [];
     const finalKind = resolveKind(kind, name, cats);
     const out = await geminiTryOn({ apiKey: process.env.GEMINI_API_KEY, model: process.env.GEMINI_IMAGE_MODEL || undefined, person: photo, personSize: Array.isArray(photoSize) ? photoSize : null,
-      garments, kind: finalKind, name: String(name || '').slice(0, 80), timeoutMs: 100000 });
+      garments, kind: finalKind, name: (String(name || '') + (color ? ` (${color})` : '')).slice(0, 100), timeoutMs: 100000 });
     console.log('[probador]', out.model, finalKind, `${garments.length} fotos`, String(name || '').slice(0, 40), `${Date.now() - t0}ms`);
     out.kind = finalKind;
     return res.status(200).json(out);
